@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+
+# Environment and sensitive secrets
+.env
+
+# Cached neural weights
+models/
+*.onnx
+*.bin
+
+# Test and coverage caches
+.pytest_cache/
+.ruff_cache/
+

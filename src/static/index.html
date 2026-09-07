@@ -1,0 +1,1559 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EchoSync — Low-Latency Voice Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root, [data-theme="light"] {
+      --color-canvas: #fefffc;
+      --color-card: #ffffff;
+      --color-well: #f9faf7;
+      --color-border: #dee2de;
+      --color-border-subtle: #ebefeb;
+      --color-border-hover: #b4b8b4;
+      --color-text-primary: #171717;
+      --color-text-secondary: #2c2c2c;
+      --color-text-muted: #646464;
+      --color-text-tertiary: #8f928f;
+      --color-accent: #41a1cf;
+      --color-accent-hover: #358cb7;
+      --color-accent-soft: rgba(65, 161, 207, 0.12);
+      --color-accent-glow: rgba(65, 161, 207, 0.28);
+      --color-twilight: #282834;
+      --color-dusk: #1f1f29;
+      --color-danger: #c44343;
+      --color-danger-soft: rgba(196, 67, 67, 0.1);
+      --color-success: #2e8540;
+      --color-success-soft: rgba(46, 133, 64, 0.1);
+      --color-warning: #b27b18;
+      --color-warning-soft: rgba(178, 123, 24, 0.1);
+
+      --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+      --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.02);
+      --shadow-float: 0 8px 24px -4px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+      --oscilloscope-grid: rgba(222, 226, 222, 0.5);
+    }
+
+    [data-theme="dark"] {
+      --color-canvas: #111114;
+      --color-card: #18181d;
+      --color-well: #131317;
+      --color-border: #26262e;
+      --color-border-subtle: #1e1e24;
+      --color-border-hover: #3f3f4a;
+      --color-text-primary: #f4f4f5;
+      --color-text-secondary: #e4e4e7;
+      --color-text-muted: #a1a1aa;
+      --color-text-tertiary: #71717a;
+      --color-accent: #38bdf8;
+      --color-accent-hover: #0284c7;
+      --color-accent-soft: rgba(56, 189, 248, 0.14);
+      --color-accent-glow: rgba(56, 189, 248, 0.35);
+      --color-twilight: #e4e4e7;
+      --color-dusk: #272730;
+      --color-danger: #f87171;
+      --color-danger-soft: rgba(248, 113, 113, 0.14);
+      --color-success: #4ade80;
+      --color-success-soft: rgba(74, 222, 128, 0.14);
+      --color-warning: #fbbf24;
+      --color-warning-soft: rgba(251, 191, 36, 0.14);
+
+      --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.25);
+      --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2);
+      --shadow-float: 0 10px 30px -4px rgba(0, 0, 0, 0.5);
+      --oscilloscope-grid: rgba(38, 38, 46, 0.6);
+    }
+
+    :root {
+      --font-serif: 'Fraunces', Georgia, serif;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+      --radius-xs: 3px;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-xl: 16px;
+      --radius-pill: 9999px;
+
+      --transition-theme: background-color 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+                          border-color 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+                          color 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-text-primary);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.5;
+      letter-spacing: -0.01em;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      transition: var(--transition-theme);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      padding: 16px 32px;
+      border-bottom: 1px solid var(--color-border);
+      background-color: var(--color-card);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: var(--transition-theme);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .brand-title {
+      font-family: var(--font-serif);
+      font-size: 24px;
+      font-weight: 500;
+      letter-spacing: -0.03em;
+      color: var(--color-text-secondary);
+    }
+
+    .brand-subtitle {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      font-weight: 400;
+      letter-spacing: 0.01em;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .theme-toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .theme-toggle-btn {
+      position: relative;
+      width: 52px;
+      height: 26px;
+      background-color: var(--color-well);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-pill);
+      cursor: pointer;
+      padding: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: var(--transition-theme);
+    }
+
+    .theme-toggle-btn:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+
+    .theme-toggle-thumb {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background-color: var(--color-card);
+      border: 1px solid var(--color-border);
+      box-shadow: var(--shadow-subtle);
+      transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.22s ease;
+    }
+
+    [data-theme="dark"] .theme-toggle-thumb {
+      transform: translateX(26px);
+      background-color: var(--color-accent);
+      border-color: var(--color-accent);
+    }
+
+    .theme-toggle-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--color-text-secondary);
+      padding: 4px 10px;
+      background-color: var(--color-well);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background-color: var(--color-text-tertiary);
+      transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .status-dot.active {
+      background-color: var(--color-accent);
+      box-shadow: 0 0 0 3px var(--color-accent-soft);
+    }
+
+    main {
+      flex: 1;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 24px 24px 96px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .top-panel-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 860px) {
+      .top-panel-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel-card {
+      background-color: var(--color-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+      box-shadow: var(--shadow-card);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      transition: var(--transition-theme);
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--color-border-subtle);
+      padding-bottom: 10px;
+    }
+
+    .panel-title {
+      font-family: var(--font-serif);
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--color-text-secondary);
+      letter-spacing: -0.02em;
+    }
+
+    .panel-tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--color-text-muted);
+    }
+
+    .oscilloscope-well {
+      background-color: var(--color-well);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: var(--transition-theme);
+    }
+
+    .canvas-wrapper {
+      position: relative;
+      width: 100%;
+      height: 96px;
+      background-color: var(--color-canvas);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+
+    canvas#waveformCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .oscilloscope-overlay {
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      pointer-events: none;
+    }
+
+    .vad-indicator-tag {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 2px 7px;
+      border-radius: var(--radius-xs);
+      background-color: var(--color-card);
+      border: 1px solid var(--color-border);
+      color: var(--color-text-tertiary);
+      transition: all 0.15s ease;
+    }
+
+    .vad-indicator-tag.active {
+      background-color: var(--color-accent-soft);
+      border-color: var(--color-accent);
+      color: var(--color-accent);
+      box-shadow: 0 0 10px var(--color-accent-glow);
+    }
+
+    .vu-section {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .vu-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--color-text-muted);
+    }
+
+    .vu-meter-bar-container {
+      position: relative;
+      height: 14px;
+      background-color: var(--color-canvas);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-xs);
+      overflow: hidden;
+      padding: 2px;
+      display: flex;
+      align-items: stretch;
+    }
+
+    .vu-segments-track {
+      position: relative;
+      flex: 1;
+      height: 100%;
+      display: flex;
+      gap: 2px;
+    }
+
+    .vu-segment {
+      flex: 1;
+      background-color: var(--color-border-subtle);
+      border-radius: 1px;
+      transition: background-color 0.05s ease;
+    }
+
+    .vu-segment.lit-normal {
+      background-color: var(--color-accent);
+    }
+
+    .vu-segment.lit-warm {
+      background-color: var(--color-warning);
+    }
+
+    .vu-segment.lit-clip {
+      background-color: var(--color-danger);
+    }
+
+    .vu-peak-hold-needle {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background-color: var(--color-text-primary);
+      box-shadow: 0 0 4px var(--color-text-primary);
+      left: 0%;
+      transition: left 0.06s linear;
+      pointer-events: none;
+    }
+
+    .vu-scale-ticks {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--color-text-tertiary);
+      padding: 0 2px;
+    }
+
+    .telemetry-table-wrap {
+      background-color: var(--color-well);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      transition: var(--transition-theme);
+    }
+
+    .telemetry-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .telemetry-table th {
+      text-align: left;
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--color-text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--color-border);
+      background-color: var(--color-card);
+    }
+
+    .telemetry-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--color-border-subtle);
+      color: var(--color-text-secondary);
+    }
+
+    .telemetry-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .metric-name {
+      color: var(--color-text-muted);
+      font-weight: 400;
+    }
+
+    .metric-num {
+      font-weight: 600;
+      color: var(--color-text-primary);
+    }
+
+    .sla-pill {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      padding: 2px 6px;
+      border-radius: var(--radius-xs);
+      border: 1px solid transparent;
+    }
+
+    .sla-pill.optimal {
+      background-color: var(--color-success-soft);
+      border-color: var(--color-success);
+      color: var(--color-success);
+    }
+
+    .sla-pill.nominal {
+      background-color: var(--color-accent-soft);
+      border-color: var(--color-accent);
+      color: var(--color-accent);
+    }
+
+    .sla-pill.lag {
+      background-color: var(--color-warning-soft);
+      border-color: var(--color-warning);
+      color: var(--color-warning);
+    }
+
+    .sla-pill.breach {
+      background-color: var(--color-danger-soft);
+      border-color: var(--color-danger);
+      color: var(--color-danger);
+    }
+
+    .telemetry-rtt-summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      background-color: var(--color-card);
+      border-top: 1px solid var(--color-border);
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .transcript-card {
+      background-color: var(--color-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      box-shadow: var(--shadow-card);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-height: 320px;
+      transition: var(--transition-theme);
+    }
+
+    .transcript-scroll {
+      flex: 1;
+      overflow-y: auto;
+      max-height: 420px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding-right: 6px;
+    }
+
+    .message-entry {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 12px 16px;
+      border-radius: var(--radius-md);
+      transition: var(--transition-theme);
+    }
+
+    .message-entry.user {
+      background-color: var(--color-well);
+      border: 1px solid var(--color-border);
+      align-self: flex-end;
+      max-width: 82%;
+    }
+
+    .message-entry.assistant {
+      background-color: var(--color-card);
+      border: 1px solid var(--color-border);
+      border-left: 3px solid var(--color-accent);
+      align-self: flex-start;
+      max-width: 86%;
+      box-shadow: var(--shadow-subtle);
+    }
+
+    .message-entry.interrupted {
+      border-left-color: var(--color-danger) !important;
+    }
+
+    .message-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--color-text-muted);
+    }
+
+    .meta-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sender-role {
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+
+    .interrupted-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      padding: 1px 6px;
+      border-radius: var(--radius-xs);
+      background-color: var(--color-danger-soft);
+      border: 1px solid var(--color-danger);
+      color: var(--color-danger);
+    }
+
+    .equalizer-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      border-radius: var(--radius-xs);
+      background-color: var(--color-accent-soft);
+      border: 1px solid var(--color-accent);
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--color-accent);
+    }
+
+    .equalizer-bars {
+      display: inline-flex;
+      align-items: flex-end;
+      height: 10px;
+      gap: 2px;
+    }
+
+    .equalizer-bar {
+      width: 2px;
+      background-color: var(--color-accent);
+      border-radius: 1px;
+      animation: eqBounce 0.8s ease-in-out infinite alternate;
+    }
+
+    .equalizer-bar:nth-child(1) { height: 4px; animation-delay: 0.1s; }
+    .equalizer-bar:nth-child(2) { height: 9px; animation-delay: 0.3s; }
+    .equalizer-bar:nth-child(3) { height: 6px; animation-delay: 0.2s; }
+    .equalizer-bar:nth-child(4) { height: 8px; animation-delay: 0.4s; }
+
+    @keyframes eqBounce {
+      0% { height: 3px; }
+      100% { height: 10px; }
+    }
+
+    .message-content {
+      color: var(--color-text-primary);
+      font-size: 14px;
+      line-height: 1.55;
+      letter-spacing: -0.005em;
+    }
+
+    .empty-prompt {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 180px;
+      color: var(--color-text-tertiary);
+      font-size: 13px;
+      font-style: italic;
+    }
+
+    .control-dock {
+      position: sticky;
+      bottom: 24px;
+      margin: 0 auto;
+      max-width: 720px;
+      width: 100%;
+      background-color: var(--color-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-pill);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: var(--shadow-float);
+      transition: var(--transition-theme);
+      z-index: 40;
+    }
+
+    .control-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    button {
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+      padding: 8px 18px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--color-border);
+      background-color: var(--color-well);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      transition: all 0.16s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    button:hover:not(:disabled) {
+      background-color: var(--color-card);
+      border-color: var(--color-border-hover);
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    button.btn-primary {
+      background-color: var(--color-card);
+      border: 1px solid var(--color-accent);
+      color: var(--color-accent);
+      font-weight: 600;
+    }
+
+    button.btn-primary:hover:not(:disabled) {
+      background-color: var(--color-accent);
+      color: #ffffff;
+      box-shadow: 0 0 12px var(--color-accent-soft);
+    }
+
+    button.btn-primary.active {
+      background-color: var(--color-accent);
+      border-color: var(--color-accent);
+      color: #ffffff;
+      animation: micPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    @keyframes micPulse {
+      0%, 100% { box-shadow: 0 0 0 0 var(--color-accent-glow); }
+      50% { box-shadow: 0 0 0 8px transparent; }
+    }
+
+    button.btn-secondary {
+      background-color: transparent;
+      border: 1px solid var(--color-border);
+      color: var(--color-text-muted);
+    }
+
+    button.btn-secondary:hover:not(:disabled) {
+      border-color: var(--color-danger);
+      color: var(--color-danger);
+      background-color: var(--color-danger-soft);
+    }
+
+    .dock-status-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .pipeline-status-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      background-color: var(--color-well);
+      border: 1px solid var(--color-border);
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .pipeline-status-badge.listening {
+      border-color: var(--color-accent);
+      color: var(--color-accent);
+    }
+
+    .pipeline-status-badge.speaking {
+      border-color: var(--color-success);
+      color: var(--color-success);
+    }
+
+    .pipeline-status-badge.processing {
+      border-color: var(--color-warning);
+      color: var(--color-warning);
+    }
+
+    .latency-ping-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--color-text-muted);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .ping-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: var(--color-text-tertiary);
+    }
+
+    .ping-dot.connected {
+      background-color: var(--color-success);
+    }
+
+    footer {
+      border-top: 1px solid var(--color-border);
+      padding: 16px 32px;
+      background-color: var(--color-card);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--color-text-muted);
+      font-family: var(--font-mono);
+      transition: var(--transition-theme);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand-group">
+      <h1 class="brand-title">EchoSync</h1>
+      <span class="brand-subtitle">Low-Latency Conversational Voice Agent</span>
+    </div>
+    <div class="header-actions">
+      <!-- Theme Architecture Toggle (Parchment <-> Obsidian) -->
+      <div class="theme-toggle-wrap">
+        <button id="themeToggleBtn" class="theme-toggle-btn" aria-label="Toggle Theme">
+          <span class="theme-toggle-thumb"></span>
+        </button>
+        <span class="theme-toggle-label" id="themeLabel">Light</span>
+      </div>
+
+      <div class="header-status">
+        <span class="status-dot" id="connectionDot"></span>
+        <span id="connectionLabel">OFFLINE</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Visualizer & High-Density Telemetry Grid -->
+    <section class="top-panel-grid">
+      <!-- Acoustic Oscilloscope & VU Meter Card -->
+      <div class="panel-card">
+        <div class="panel-header">
+          <h2 class="panel-title">Acoustic Input</h2>
+          <span class="panel-tag">16 kHz / 512-sample PCM</span>
+        </div>
+        
+        <div class="oscilloscope-well">
+          <div class="canvas-wrapper">
+            <canvas id="waveformCanvas" width="480" height="96"></canvas>
+            <div class="oscilloscope-overlay">
+              <span class="vad-indicator-tag" id="vadStatusTag">VAD Silence</span>
+            </div>
+          </div>
+
+          <div class="vu-section">
+            <div class="vu-header">
+              <span>Calibrated Input Level</span>
+              <span id="amplitudeValueLabel">-60.0 dB</span>
+            </div>
+            <div class="vu-meter-bar-container">
+              <div class="vu-segments-track" id="vuSegmentsTrack">
+                <!-- 24 segmented blocks generated dynamically -->
+              </div>
+              <div class="vu-peak-hold-needle" id="vuPeakNeedle"></div>
+            </div>
+            <div class="vu-scale-ticks">
+              <span>-60 dB</span>
+              <span>-36 dB</span>
+              <span>-18 dB</span>
+              <span>-6 dB</span>
+              <span>0 dB</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- High-Density Telemetry HUD Card -->
+      <div class="panel-card">
+        <div class="panel-header">
+          <h2 class="panel-title">Turn Telemetry</h2>
+          <span class="panel-tag">Subsystem SLA Monitor</span>
+        </div>
+
+        <div class="telemetry-table-wrap">
+          <table class="telemetry-table">
+            <thead>
+              <tr>
+                <th>Subsystem Metric</th>
+                <th>Observed</th>
+                <th>Target SLA</th>
+                <th>Health</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="metric-name">VAD Silence Window</td>
+                <td><span class="metric-num" id="hudVadSilence">0.0</span> ms</td>
+                <td>400 ms</td>
+                <td><span class="sla-pill nominal" id="slaVad">Standby</span></td>
+              </tr>
+              <tr>
+                <td class="metric-name">STT Latency (Whisper)</td>
+                <td><span class="metric-num" id="hudStt">0.0</span> ms</td>
+                <td>&le; 250 ms</td>
+                <td><span class="sla-pill nominal" id="slaStt">Standby</span></td>
+              </tr>
+              <tr>
+                <td class="metric-name">LLM TTFT (Gemini Flash)</td>
+                <td><span class="metric-num" id="hudLlm">0.0</span> ms</td>
+                <td>&le; 300 ms</td>
+                <td><span class="sla-pill nominal" id="slaLlm">Standby</span></td>
+              </tr>
+              <tr>
+                <td class="metric-name">TTS 1st Chunk (Kokoro)</td>
+                <td><span class="metric-num" id="hudTts">0.0</span> ms</td>
+                <td>&le; 150 ms</td>
+                <td><span class="sla-pill nominal" id="slaTts">Standby</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="telemetry-rtt-summary">
+            <span class="metric-name">Total Round-Trip Time (RTT)</span>
+            <div>
+              <span class="metric-num" id="hudTotalRtt">0.0</span> ms
+              <span class="sla-pill nominal" style="margin-left: 8px;" id="slaTotalRtt">Standby</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dialogue & Playback Stream Card -->
+    <section class="transcript-card">
+      <div class="panel-header">
+        <h2 class="panel-title">Dialogue Stream</h2>
+        <span class="panel-tag" id="turnCountTag">Turn 0</span>
+      </div>
+      <div class="transcript-scroll" id="transcriptContainer">
+        <div class="empty-prompt" id="emptyPrompt">
+          Start a session and begin speaking to view transcribed turns and synthesized voice output.
+        </div>
+      </div>
+    </section>
+
+    <!-- Ergonomic Pill Control Dock -->
+    <section class="control-dock">
+      <div class="control-actions">
+        <button id="toggleMicBtn" class="btn-primary">
+          <span id="micActionText">Start Session</span>
+        </button>
+        <button id="interruptBtn" class="btn-secondary" disabled>
+          <span>Interrupt</span>
+        </button>
+      </div>
+      <div class="dock-status-group">
+        <span class="pipeline-status-badge" id="pipelineStateBadge">IDLE</span>
+        <div class="latency-ping-badge">
+          <span class="ping-dot" id="pingDot"></span>
+          <span id="pingLabel">Offline</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>EchoSync Edge/Cloud Hybrid Architecture</span>
+    <span>Wire: 16 kHz Inbound PCM Little-Endian / 24 kHz Outbound PCM</span>
+  </footer>
+
+  <script>
+    (function () {
+      // Theme Architecture (Light / Dark Mode)
+      const htmlElement = document.documentElement;
+      const themeToggleBtn = document.getElementById("themeToggleBtn");
+      const themeLabel = document.getElementById("themeLabel");
+
+      function applyTheme(theme) {
+        htmlElement.setAttribute("data-theme", theme);
+        localStorage.setItem("echosync_theme", theme);
+        themeLabel.textContent = theme === "dark" ? "Obsidian" : "Parchment";
+      }
+
+      const savedTheme = localStorage.getItem("echosync_theme") ||
+        (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      applyTheme(savedTheme);
+
+      themeToggleBtn.addEventListener("click", () => {
+        const currentTheme = htmlElement.getAttribute("data-theme");
+        const newTheme = currentTheme === "dark" ? "light" : "dark";
+        applyTheme(newTheme);
+      });
+
+      // DOM References
+      const toggleMicBtn = document.getElementById("toggleMicBtn");
+      const micActionText = document.getElementById("micActionText");
+      const interruptBtn = document.getElementById("interruptBtn");
+      const connectionDot = document.getElementById("connectionDot");
+      const connectionLabel = document.getElementById("connectionLabel");
+      const pingDot = document.getElementById("pingDot");
+      const pingLabel = document.getElementById("pingLabel");
+      const pipelineStateBadge = document.getElementById("pipelineStateBadge");
+      const waveformCanvas = document.getElementById("waveformCanvas");
+      const canvasCtx = waveformCanvas.getContext("2d");
+      const vadStatusTag = document.getElementById("vadStatusTag");
+      const amplitudeValueLabel = document.getElementById("amplitudeValueLabel");
+      const vuSegmentsTrack = document.getElementById("vuSegmentsTrack");
+      const vuPeakNeedle = document.getElementById("vuPeakNeedle");
+      const transcriptContainer = document.getElementById("transcriptContainer");
+      const emptyPrompt = document.getElementById("emptyPrompt");
+      const turnCountTag = document.getElementById("turnCountTag");
+
+      // HUD & SLA Elements
+      const hudVadSilence = document.getElementById("hudVadSilence");
+      const hudStt = document.getElementById("hudStt");
+      const hudLlm = document.getElementById("hudLlm");
+      const hudTts = document.getElementById("hudTts");
+      const hudTotalRtt = document.getElementById("hudTotalRtt");
+      const slaVad = document.getElementById("slaVad");
+      const slaStt = document.getElementById("slaStt");
+      const slaLlm = document.getElementById("slaLlm");
+      const slaTts = document.getElementById("slaTts");
+      const slaTotalRtt = document.getElementById("slaTotalRtt");
+
+      // Audio & Pipeline State
+      let isSessionActive = false;
+      let websocket = null;
+      let audioInputContext = null;
+      let mediaStream = null;
+      let audioWorkletNode = null;
+      let playbackAudioContext = null;
+      let nextPlaybackTime = 0.0;
+      let activePlaybackSources = [];
+      let turnCounter = 0;
+      let activeAssistantEntry = null;
+      let activeAssistantContent = null;
+      let activeEqualizerBadge = null;
+
+      // VU Meter & Peak Hold State
+      const NUM_VU_SEGMENTS = 24;
+      const vuSegments = [];
+      for (let i = 0; i < NUM_VU_SEGMENTS; i++) {
+        const seg = document.createElement("div");
+        seg.className = "vu-segment";
+        vuSegmentsTrack.appendChild(seg);
+        vuSegments.push(seg);
+      }
+      let peakHoldPercent = 0.0;
+      let peakHoldDecay = 0.0;
+
+      // Oscilloscope Data Buffer (512 samples)
+      let currentFrameData = new Int16Array(512);
+
+      // 60 FPS Oscilloscope Waveform Visualizer
+      function renderOscilloscope() {
+        requestAnimationFrame(renderOscilloscope);
+
+        const width = waveformCanvas.width;
+        const height = waveformCanvas.height;
+        const isDark = htmlElement.getAttribute("data-theme") === "dark";
+
+        // Clear canvas with theme-matched background
+        canvasCtx.fillStyle = isDark ? "#131317" : "#fefffc";
+        canvasCtx.fillRect(0, 0, width, height);
+
+        // Draw background grid lines
+        canvasCtx.strokeStyle = isDark ? "rgba(38, 38, 46, 0.6)" : "rgba(222, 226, 222, 0.6)";
+        canvasCtx.lineWidth = 1;
+
+        canvasCtx.beginPath();
+        // Center horizontal line
+        canvasCtx.moveTo(0, height / 2);
+        canvasCtx.lineTo(width, height / 2);
+        // Subtle quarter lines
+        canvasCtx.moveTo(0, height * 0.25);
+        canvasCtx.lineTo(width, height * 0.25);
+        canvasCtx.moveTo(0, height * 0.75);
+        canvasCtx.lineTo(width, height * 0.75);
+        canvasCtx.stroke();
+
+        if (!isSessionActive) return;
+
+        // Draw smooth bezier curved waveform with subtle glow
+        const accentColor = isDark ? "#38bdf8" : "#41a1cf";
+        canvasCtx.strokeStyle = accentColor;
+        canvasCtx.lineWidth = 2.0;
+        canvasCtx.shadowColor = accentColor;
+        canvasCtx.shadowBlur = 6;
+
+        canvasCtx.beginPath();
+        const points = [];
+        for (let i = 0; i < currentFrameData.length; i += 4) {
+          const norm = currentFrameData[i] / 32768.0;
+          const x = (i / (currentFrameData.length - 1)) * width;
+          const y = (height / 2) - (norm * (height / 2) * 0.88);
+          points.push({ x, y });
+        }
+
+        if (points.length > 0) {
+          canvasCtx.moveTo(points[0].x, points[0].y);
+          for (let i = 0; i < points.length - 1; i++) {
+            const xc = (points[i].x + points[i + 1].x) / 2;
+            const yc = (points[i].y + points[i + 1].y) / 2;
+            canvasCtx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+          }
+          const last = points[points.length - 1];
+          canvasCtx.lineTo(last.x, last.y);
+          canvasCtx.stroke();
+        }
+
+        canvasCtx.shadowBlur = 0;
+      }
+      renderOscilloscope();
+
+      // Segmented VU Meter & Peak Hold Calculator
+      function updateAcousticMeter(int16Array) {
+        let sumSquares = 0;
+        for (let i = 0; i < int16Array.length; i++) {
+          const norm = int16Array[i] / 32768.0;
+          sumSquares += norm * norm;
+        }
+        const rms = Math.sqrt(sumSquares / int16Array.length);
+
+        const db = rms > 0.00001 ? Math.max(-60, 20 * Math.log10(rms)) : -60;
+        amplitudeValueLabel.textContent = db.toFixed(1) + " dB";
+
+        const percent = Math.min(100, Math.max(0, ((db + 60) / 60) * 100));
+        const activeSegments = Math.round((percent / 100) * NUM_VU_SEGMENTS);
+
+        for (let i = 0; i < NUM_VU_SEGMENTS; i++) {
+          const seg = vuSegments[i];
+          seg.className = "vu-segment";
+          if (i < activeSegments) {
+            if (i >= NUM_VU_SEGMENTS - 2) {
+              seg.classList.add("lit-clip");
+            } else if (i >= NUM_VU_SEGMENTS - 6) {
+              seg.classList.add("lit-warm");
+            } else {
+              seg.classList.add("lit-normal");
+            }
+          }
+        }
+
+        // Peak Hold Needle logic
+        if (percent >= peakHoldPercent) {
+          peakHoldPercent = percent;
+          peakHoldDecay = 0;
+        } else {
+          peakHoldDecay += 0.08;
+          peakHoldPercent = Math.max(0, peakHoldPercent - peakHoldDecay);
+        }
+        vuPeakNeedle.style.left = Math.min(99, peakHoldPercent) + "%";
+      }
+
+      // Stop Audio Playback immediately (Barge-in handling)
+      function flushPlaybackQueue() {
+        for (let i = 0; i < activePlaybackSources.length; i++) {
+          try {
+            activePlaybackSources[i].stop();
+          } catch (e) {}
+        }
+        activePlaybackSources = [];
+        if (playbackAudioContext) {
+          nextPlaybackTime = playbackAudioContext.currentTime;
+        }
+        removeEqualizerBadge();
+      }
+
+      // Live Equalizer Badge Management
+      function attachEqualizerBadge(entry) {
+        removeEqualizerBadge();
+        const metaRight = entry.querySelector(".meta-right");
+        if (!metaRight) return;
+
+        const badge = document.createElement("span");
+        badge.className = "equalizer-badge";
+        badge.innerHTML = `
+          <div class="equalizer-bars">
+            <span class="equalizer-bar"></span>
+            <span class="equalizer-bar"></span>
+            <span class="equalizer-bar"></span>
+            <span class="equalizer-bar"></span>
+          </div>
+          <span>Streaming Audio</span>
+        `;
+        metaRight.appendChild(badge);
+        activeEqualizerBadge = badge;
+      }
+
+      function removeEqualizerBadge() {
+        if (activeEqualizerBadge && activeEqualizerBadge.parentElement) {
+          activeEqualizerBadge.remove();
+        }
+        activeEqualizerBadge = null;
+      }
+
+      // Play incoming 24kHz 16-bit PCM chunk
+      function enqueuePcmChunk(arrayBuffer) {
+        if (!playbackAudioContext) {
+          playbackAudioContext = new (window.AudioContext || window.webkitAudioContext)({
+            sampleRate: 24000
+          });
+        }
+        if (playbackAudioContext.state === "suspended") {
+          playbackAudioContext.resume();
+        }
+
+        const int16 = new Int16Array(arrayBuffer);
+        const float32 = new Float32Array(int16.length);
+        for (let i = 0; i < int16.length; i++) {
+          float32[i] = int16[i] / (int16[i] < 0 ? 32768 : 32767);
+        }
+
+        const audioBuffer = playbackAudioContext.createBuffer(1, float32.length, 24000);
+        audioBuffer.copyToChannel(float32, 0);
+
+        const source = playbackAudioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(playbackAudioContext.destination);
+
+        const currentTime = playbackAudioContext.currentTime;
+        const startTime = Math.max(currentTime, nextPlaybackTime);
+        source.start(startTime);
+        nextPlaybackTime = startTime + audioBuffer.duration;
+
+        activePlaybackSources.push(source);
+        source.onended = () => {
+          const index = activePlaybackSources.indexOf(source);
+          if (index !== -1) {
+            activePlaybackSources.splice(index, 1);
+          }
+          if (activePlaybackSources.length === 0) {
+            removeEqualizerBadge();
+          }
+        };
+      }
+
+      // Append Dialogue Transcript Message
+      function appendTranscript(role, text, extraClass = "") {
+        if (emptyPrompt) {
+          emptyPrompt.style.display = "none";
+        }
+
+        const entry = document.createElement("div");
+        entry.className = "message-entry " + role + (extraClass ? " " + extraClass : "");
+
+        const meta = document.createElement("div");
+        meta.className = "message-meta";
+
+        const metaLeft = document.createElement("div");
+        metaLeft.className = "meta-left";
+
+        const roleSpan = document.createElement("span");
+        roleSpan.className = "sender-role";
+        roleSpan.textContent = role === "user" ? "USER" : "ECHOSYNC";
+        metaLeft.appendChild(roleSpan);
+
+        if (extraClass === "interrupted") {
+          const badge = document.createElement("span");
+          badge.className = "interrupted-badge";
+          badge.textContent = "[Interrupted by user]";
+          metaLeft.appendChild(badge);
+        }
+
+        const metaRight = document.createElement("div");
+        metaRight.className = "meta-right";
+
+        meta.appendChild(metaLeft);
+        meta.appendChild(metaRight);
+
+        const content = document.createElement("div");
+        content.className = "message-content";
+        content.textContent = text;
+
+        entry.appendChild(meta);
+        entry.appendChild(content);
+
+        transcriptContainer.appendChild(entry);
+        transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+
+        if (role === "assistant") {
+          attachEqualizerBadge(entry);
+          activeAssistantEntry = entry;
+          activeAssistantContent = content;
+        }
+
+        return content;
+      }
+
+      // SLA Status Pill Helper
+      function setSlaStatus(element, valueMs, optimalMax, nominalMax) {
+        if (!element) return;
+        element.className = "sla-pill";
+        if (valueMs <= 0.0) {
+          element.textContent = "Standby";
+          element.classList.add("nominal");
+        } else if (valueMs <= optimalMax) {
+          element.textContent = "Optimal";
+          element.classList.add("optimal");
+        } else if (valueMs <= nominalMax) {
+          element.textContent = "Nominal";
+          element.classList.add("nominal");
+        } else if (valueMs <= nominalMax * 1.5) {
+          element.textContent = "Lag";
+          element.classList.add("lag");
+        } else {
+          element.textContent = "Breach";
+          element.classList.add("breach");
+        }
+      }
+
+      // Update Pipeline Status UI
+      function setPipelineState(state) {
+        pipelineStateBadge.textContent = state;
+        pipelineStateBadge.className = "pipeline-status-badge";
+
+        if (state === "SPEAKING") {
+          pipelineStateBadge.classList.add("speaking");
+        } else if (state === "LISTENING") {
+          pipelineStateBadge.classList.add("listening");
+          removeEqualizerBadge();
+        } else if (state === "PROCESSING_STT" || state === "STREAMING_LLM") {
+          pipelineStateBadge.classList.add("processing");
+        }
+      }
+
+      // Update High-Density Telemetry HUD
+      function updateTelemetryHUD(metrics) {
+        if (!metrics) return;
+        if (metrics.vad_silence_ms !== undefined) {
+          hudVadSilence.textContent = metrics.vad_silence_ms.toFixed(1);
+          setSlaStatus(slaVad, metrics.vad_silence_ms, 400, 600);
+        }
+        if (metrics.stt_ms !== undefined) {
+          hudStt.textContent = metrics.stt_ms.toFixed(1);
+          setSlaStatus(slaStt, metrics.stt_ms, 250, 500);
+        }
+        if (metrics.llm_ttft_ms !== undefined) {
+          hudLlm.textContent = metrics.llm_ttft_ms.toFixed(1);
+          setSlaStatus(slaLlm, metrics.llm_ttft_ms, 300, 600);
+        }
+        if (metrics.tts_first_chunk_ms !== undefined) {
+          hudTts.textContent = metrics.tts_first_chunk_ms.toFixed(1);
+          setSlaStatus(slaTts, metrics.tts_first_chunk_ms, 150, 400);
+        }
+        if (metrics.total_rtt_ms !== undefined) {
+          hudTotalRtt.textContent = metrics.total_rtt_ms.toFixed(1);
+          setSlaStatus(slaTotalRtt, metrics.total_rtt_ms, 800, 1500);
+        }
+      }
+
+      // Start Ingestion Session
+      async function startSession() {
+        try {
+          connectionLabel.textContent = "CONNECTING...";
+          pingLabel.textContent = "Connecting";
+          const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+          const wsUrl = protocol + "//" + window.location.host + "/ws/audio";
+          websocket = new WebSocket(wsUrl);
+          websocket.binaryType = "arraybuffer";
+
+          websocket.onopen = async () => {
+            connectionDot.classList.add("active");
+            connectionLabel.textContent = "CONNECTED";
+            pingDot.classList.add("connected");
+            pingLabel.textContent = "Connected <1ms";
+
+            interruptBtn.disabled = false;
+            toggleMicBtn.classList.add("active");
+            micActionText.textContent = "Stop Session";
+
+            // Initialize Audio Ingestion Context & Worklet
+            audioInputContext = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioInputContext.state === "suspended") {
+              await audioInputContext.resume();
+            }
+
+            await audioInputContext.audioWorklet.addModule("/static/audio-processor.js");
+
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                channelCount: 1
+              }
+            });
+
+            const sourceNode = audioInputContext.createMediaStreamSource(mediaStream);
+            audioWorkletNode = new AudioWorkletNode(audioInputContext, "audio-processor");
+
+            audioWorkletNode.port.onmessage = (event) => {
+              if (websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send(event.data);
+                const chunk = new Int16Array(event.data);
+                currentFrameData = chunk;
+                updateAcousticMeter(chunk);
+              }
+            };
+
+            sourceNode.connect(audioWorkletNode);
+            const muteGain = audioInputContext.createGain();
+            muteGain.gain.value = 0.0;
+            audioWorkletNode.connect(muteGain);
+            muteGain.connect(audioInputContext.destination);
+            isSessionActive = true;
+          };
+
+          websocket.onmessage = (event) => {
+            if (typeof event.data === "string") {
+              try {
+                const message = JSON.parse(event.data);
+                if (message.type === "status") {
+                  const state = message.data.state;
+                  setPipelineState(state);
+
+                  // Update dynamic VAD speech detection tag
+                  if (state === "PROCESSING_STT" || state === "STREAMING_LLM" || state === "SPEAKING") {
+                    vadStatusTag.textContent = "Speech Active";
+                    vadStatusTag.classList.add("active");
+                  } else {
+                    vadStatusTag.textContent = "VAD Silence";
+                    vadStatusTag.classList.remove("active");
+                  }
+
+                  if (message.data.interrupted) {
+                    flushPlaybackQueue();
+                    if (activeAssistantEntry) {
+                      activeAssistantEntry.classList.add("interrupted");
+                      const metaLeft = activeAssistantEntry.querySelector(".meta-left");
+                      if (metaLeft && !metaLeft.querySelector(".interrupted-badge")) {
+                        const badge = document.createElement("span");
+                        badge.className = "interrupted-badge";
+                        badge.textContent = "[Interrupted by user]";
+                        metaLeft.appendChild(badge);
+                      }
+                      removeEqualizerBadge();
+                      activeAssistantEntry = null;
+                      activeAssistantContent = null;
+                    }
+                  }
+
+                  if (message.data.metrics) {
+                    updateTelemetryHUD(message.data.metrics);
+                  }
+
+                  if (state === "LISTENING") {
+                    activeAssistantEntry = null;
+                    activeAssistantContent = null;
+                  }
+                } else if (message.type === "transcript") {
+                  turnCounter++;
+                  turnCountTag.textContent = "Turn " + turnCounter;
+                  appendTranscript("user", message.data.text);
+                  activeAssistantEntry = null;
+                  activeAssistantContent = null;
+                } else if (message.type === "audio_header") {
+                  const clause = message.data.text_segment;
+                  if (!activeAssistantContent) {
+                    appendTranscript("assistant", clause);
+                  } else {
+                    activeAssistantContent.textContent += " " + clause;
+                    transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+                  }
+                }
+              } catch (err) {
+                console.error("Error parsing message JSON:", err);
+              }
+            } else if (event.data instanceof ArrayBuffer) {
+              // Binary 24kHz PCM audio chunk
+              enqueuePcmChunk(event.data);
+            }
+          };
+
+          websocket.onerror = (err) => {
+            console.error("WebSocket error:", err);
+            stopSession();
+          };
+
+          websocket.onclose = () => {
+            stopSession();
+          };
+        } catch (error) {
+          console.error("Failed to start session:", error);
+          stopSession();
+          alert("Microphone access failed: " + error.message);
+        }
+      }
+
+      // Stop Session & Clean Up
+      function stopSession() {
+        isSessionActive = false;
+        flushPlaybackQueue();
+
+        if (mediaStream) {
+          mediaStream.getTracks().forEach((track) => track.stop());
+          mediaStream = null;
+        }
+        if (audioWorkletNode) {
+          audioWorkletNode.disconnect();
+          audioWorkletNode = null;
+        }
+        if (audioInputContext) {
+          audioInputContext.close();
+          audioInputContext = null;
+        }
+        if (websocket) {
+          if (websocket.readyState === WebSocket.OPEN || websocket.readyState === WebSocket.CONNECTING) {
+            websocket.close();
+          }
+          websocket = null;
+        }
+
+        connectionDot.classList.remove("active");
+        connectionLabel.textContent = "OFFLINE";
+        pingDot.classList.remove("connected");
+        pingLabel.textContent = "Offline";
+
+        setPipelineState("IDLE");
+        vadStatusTag.textContent = "VAD Silence";
+        vadStatusTag.classList.remove("active");
+
+        interruptBtn.disabled = true;
+        toggleMicBtn.classList.remove("active");
+        micActionText.textContent = "Start Session";
+
+        currentFrameData = new Int16Array(512);
+        for (let i = 0; i < NUM_VU_SEGMENTS; i++) {
+          vuSegments[i].className = "vu-segment";
+        }
+        vuPeakNeedle.style.left = "0%";
+        amplitudeValueLabel.textContent = "-60.0 dB";
+      }
+
+      // User Interrupt Action
+      function sendInterrupt() {
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+          websocket.send(JSON.stringify({ type: "user_interrupt" }));
+        }
+        flushPlaybackQueue();
+        setPipelineState("LISTENING");
+        if (activeAssistantEntry) {
+          activeAssistantEntry.classList.add("interrupted");
+          const metaLeft = activeAssistantEntry.querySelector(".meta-left");
+          if (metaLeft && !metaLeft.querySelector(".interrupted-badge")) {
+            const badge = document.createElement("span");
+            badge.className = "interrupted-badge";
+            badge.textContent = "[Interrupted by user]";
+            metaLeft.appendChild(badge);
+          }
+          removeEqualizerBadge();
+          activeAssistantEntry = null;
+          activeAssistantContent = null;
+        }
+      }
+
+      // Event Listeners
+      toggleMicBtn.addEventListener("click", () => {
+        if (isSessionActive) {
+          stopSession();
+        } else {
+          startSession();
+        }
+      });
+
+      interruptBtn.addEventListener("click", sendInterrupt);
+    })();
+  </script>
+</body>
+</html>
