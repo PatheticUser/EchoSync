@@ -1,7 +1,7 @@
 [project]
 name = "echosync"
 version = "0.1.0"
-description = "Add your description here"
+description = "Low-Latency Edge/Cloud Hybrid Conversational Voice Agent"
 readme = "README.md"
 authors = [
     { name = "Rameez", email = "rameezalipacific@gmail.com" }
