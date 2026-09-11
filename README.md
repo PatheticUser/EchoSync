@@ -1,4 +1,4 @@
-# EchoSync AI
+4# EchoSync AI
 
 Low-latency edge/cloud hybrid conversational voice agent designed for privacy-preserving, cost-effective, real-time voice interactions.
 
@@ -82,7 +82,7 @@ EchoSync isolates raw acoustic capture, voice activity detection, and speech-to-
 - **Runtime & Gateway**: Python 3.11+, [uv](https://github.com/astral-sh/uv), [FastAPI](https://fastapi.tiangolo.com), [Uvicorn](https://www.uvicorn.org).
 - **Voice Activity Detection**: Silero-VAD v5 on ONNX Runtime CPU with 64-sample rolling context window.
 - **Speech-to-Text**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2 INT8 quantized, 4 pinned CPU threads).
-- **Language Model**: Google GenAI SDK (`gemini-3.6-flash`), conversational prompt tuning, [Tenacity](https://github.com/jd/tenacity) exponential retries.
+- **Language Model**: Google GenAI SDK (`gemini-3.6-flash`), conversational prompt tuning, [Tenacity](https://github.com/jd/tenacity) exponential retries, rolling multi-turn conversation memory (`LLM_MEMORY_TURNS`, default 8).
 - **Text-to-Speech**: Kokoro-82M ONNX (`kokoro-onnx`), 24 kHz 16-bit linear PCM streaming with sub-clause pipelining.
 - **Frontend Workbench**: Vanilla HTML5, Web Audio API, custom `AudioWorkletProcessor`, HTML5 Canvas oscilloscope, Parchment/Obsidian dual-theme architecture.
 
@@ -179,6 +179,25 @@ Open browser at: `http://localhost:8000`
 5. **Telemetry HUD**: Inspect observed latencies against subsystem SLAs.
 
 ---
+
+## Containerized Deployment (Docker)
+
+Model weights are baked into the image at build time, so the production container performs **zero cold-start model downloads**.
+
+```bash
+# Local models already cached? Pre-fetch weights into ./models/
+uv run python scripts/download_models.py
+
+# Build image (downloads + caches VAD / Whisper / Kokoro weights during build)
+docker build -t echosync:latest .
+
+# Run with docker compose (reads .env for GEMINI_API_KEY)
+docker compose up -d
+```
+
+- Multi-stage `Dockerfile`: builder (`ghcr.io/astral-sh/uv`) installs deps then runs the idempotent `scripts/download_models.py`; runtime copies the venv + weight cache and runs as a non-root user.
+- Health checks wired via the `/healthz` probe on both the image and `docker-compose.yml`.
+- CI (`.github/workflows/ci.yml`): ruff lint + format, full pytest, then a Docker build that pushes `ghcr.io/<owner>/<repo>` images (`latest` + `sha-<short>`) on `main`. Pull the image on Render / Railway / Koyeb for one-click deployment.
 
 ## System Health & Probes
 

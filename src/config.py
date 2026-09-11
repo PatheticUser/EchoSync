@@ -104,6 +104,13 @@ class Settings(BaseSettings):
         description="Sustained silence duration in milliseconds to trigger utterance boundary",
     )
 
+    # Conversation Memory
+    llm_memory_turns: int = Field(
+        default=8,
+        ge=0,
+        description="Number of prior user/assistant turn pairs retained as LLM conversation memory",
+    )
+
     # Local Model Cache Paths
     model_cache_dir: Path = Field(
         default=Path("./models"),

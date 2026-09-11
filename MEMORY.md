@@ -1,16 +1,17 @@
 # MEMORY.md — EchoSync AI System State & Progress Ledger
 
 ## 1. Current Phase and Status
-- **Current Phase:** Phase 7: Web Client & AudioWorklet Ingestion
-- **Status:** Completed
-- **Timestamp:** 2026-09-07T18:01:00+05:00
+- **Current Phase:** Phase 8: Containerization, CI/CD & Production Deployment
+- **Status:** Delivered — Docker image built & verified locally (healthy, all models baked, zero cold-start downloads); CI workflow ready for push
+- **Part A enhancements:** rolling conversation memory, turn-cancel race hardening, DEBUG frame logging, `edge-tts` dependency removed
+- **Timestamp:** 2026-09-11
 
 ## 2. Implemented Files & Module Signatures
 
 ### `pyproject.toml`
 - Target: Python >=3.11
 - Package manager: uv
-- Core dependencies: `fastapi`, `uvicorn`, `google-genai`, `faster-whisper`, `onnxruntime`, `numpy`, `pydantic`, `pydantic-settings`, `tenacity`, `psutil`, `kokoro-onnx`, `edge-tts`
+- Core dependencies: `fastapi`, `uvicorn`, `google-genai`, `faster-whisper`, `onnxruntime`, `numpy`, `pydantic`, `pydantic-settings`, `tenacity`, `psutil`, `kokoro-onnx` (`edge-tts` removed 2026-09-11 — dead dependency)
 - Dev dependencies: `pytest`, `pytest-asyncio`, `ruff`
 - Configurations: `[tool.uv] package = false`, `[tool.pytest.ini_options]`, `[tool.ruff]`
 
@@ -35,6 +36,7 @@
   - `whisper_model_dir: Path` (default: `Path("./models/stt")`)
   - `kokoro_model_path: Path` (default: `Path("./models/tts/kokoro-v0_19.onnx")`)
   - `kokoro_voices_path: Path` (default: `Path("./models/tts/voices.bin")`)
+  - `llm_memory_turns: int` (default: `8`, ge=0; prior user/assistant turn pairs retained as LLM conversation memory)
 - `get_settings() -> Settings` (cached via `functools.lru_cache`)
 
 ### `src/core/vad.py`
@@ -65,11 +67,12 @@
   - `feed(token: str) -> list[str]` (buffers streaming tokens, regex matches `([.!?;:])(?:\s+|\n+)`, verifies `len >= min_chars`)
   - `flush() -> str | None` (flushes remaining buffer on iterator exhaustion / EOF)
 - `is_retryable_llm_error(exc: BaseException) -> bool`: Filters `APIError` 429, 500, 502, 503, 504 and rate limit messages.
+- `build_contents(history: list[tuple[str,str]] | None, prompt: str, max_turns: int = 8) -> list[dict]`: Builds genai `contents` from rolling history + closing user prompt; enforces strict user/model alternation (user first), merges adjacent same-role, drops leading model echoes.
 - `class GeminiLLM`:
-  - `__init__(api_key, model_name="gemini-2.5-flash", system_prompt=DEFAULT_VOICE_SYSTEM_PROMPT, client=None)`
-  - `_call_stream_with_retry(prompt: str)` (wrapped via `tenacity.AsyncRetrying`, exponential backoff with jitter)
-  - `stream_tokens(prompt: str) -> AsyncIterator[str]` (yields token strings from Gemini API)
-  - `stream_sentence_chunks(prompt: str, min_chars=20) -> AsyncIterator[str]` (pipes token stream through `SentenceChunker`)
+  - `__init__(api_key, model_name="gemini-3.6-flash", system_prompt=DEFAULT_VOICE_SYSTEM_PROMPT, memory_turns=8, client=None)`
+  - `_call_stream_with_retry(contents: list[dict])` (wrapped via `tenacity.AsyncRetrying`, exponential backoff with jitter)
+  - `stream_tokens(prompt: str, contents=None) -> AsyncIterator[str]` (yields token strings from Gemini API)
+  - `stream_sentence_chunks(prompt: str, min_chars=20, history=None) -> AsyncIterator[str]` (pipes token stream through `SentenceChunker`, threads history into Gemini contents via `build_contents`)
 
 ### `src/core/tts.py`
 - `class KokoroTTS`:
@@ -122,6 +125,11 @@
 - `test_sentence_chunker_deterministic` (boundary splitting, min_chars accumulator)
 - `test_sentence_chunker_empty_and_flush` (empty inputs, EOF remaining flush)
 - `test_gemini_llm_stream_sentence_chunks_mocked` (mocked Gemini streaming pipeline)
+- `test_build_contents_empty_history` (single user prompt)
+- `test_build_contents_preserves_alternation` (user/model alternation + closing prompt)
+- `test_build_contents_trims_to_max_turns` (trailing `max_turns` pairs retained)
+- `test_build_contents_repairs_broken_role_sequence` (leading model echo dropped, same-role merged)
+- `test_stream_sentence_chunks_sends_history_contents` (history threaded into Gemini `contents` payload)
 - `test_tenacity_retry_on_429_transient` (verifies retry recovery on 429)
 - `test_tenacity_retry_exhaustion` (verifies re-raise after 3 attempts)
 - `test_is_retryable_llm_error` (validates error code filtering)
@@ -143,9 +151,12 @@
 
 ### `src/api/router.py`
 - `class SessionState`:
-  - Per-connection pipeline state: `session_id`, `vad`, `audio_queue`, `current_state`, `active_turn_task`
+  - Per-connection pipeline state: `session_id`, `vad`, `audio_queue`, `current_state`, `active_turn_task`, `memory` (rolling `deque` of completed `(role, text)` pairs, maxlen `llm_memory_turns*2`)
   - `send_status(state, extra=None)`: Sends structured JSON status frames
-  - `cancel_active_generation()`: Cooperative cancellation of in-flight dialogue turn task
+  - `cancel_active_generation()`: Cooperative cancellation of in-flight dialogue turn task (sync, fire-and-forget)
+  - `stop_active_turn() -> await`: Cancel + fully await prior turn task (suppress `CancelledError`) before spawning a new utterance — prevents stale status/audio race
+  - Memory guardrail: only fully-completed turns append to `memory` (user transcript + aggregated assistant clauses). Cancelled/interrupted turns never append → alternation preserved.
+  - Per-frame diagnostic logging moved to DEBUG; 50-frame heartbeat stays INFO (kills 30 msg/sec log spam)
 - `/ws/audio` endpoint:
   - Demuxes binary 1024-byte PCM chunks and JSON control frames (`user_interrupt`)
   - Backpressure protection: bounded `asyncio.Queue(maxsize=50)` with drop warning
@@ -194,6 +205,9 @@
 - AudioWorklet Thread Keep-Alive: Browsers may pause an AudioWorkletNode that is not routed to an audio destination. Connected worklet through a 0.0-gain node to `audioContext.destination` to guarantee continuous rendering clock execution without audio feedback.
 - Inbound Sensitivity: Configured 2.0x input gain in `audio-processor.js` and set default `VAD_THRESHOLD=0.35` in `src/config.py` and `.env` for comfortable desktop mic pickup.
 - Real-time Diagnostic Logging: Emits frame-level RMS amplitude, byte length, and raw VAD probability in `router.py` on speech activity or elevated probability.
+- Rolling Conversation Memory: `SessionState.memory` deque feeds last `LLM_MEMORY_TURNS` completed turn pairs into the Gemini `contents` payload via `build_contents`. Guardrail: only turns that reach full completion (no barge-in cancel) append to memory, so role alternation never breaks mid-history. Memory configurable from `LLM_MEMORY_TURNS=8`; `0` restores stateless mode.
+- Turn-Cancel Drain: `stop_active_turn()` awaits the cancelled turn task (suppressing `CancelledError`) so its `LISTENING` status and stale audio fully flush before a new dialogue turn spawns.
+- Log Spam Reduction: Per-frame VAD diagnostics demoted to DEBUG (was INFO every 32ms during speech); periodic 50-frame heartbeat retained at INFO for liveness.
 - Gemini Model Migration: Updated default LLM model from deprecated `gemini-2.5-flash` to active `gemini-3.6-flash` in `src/config.py`, `src/core/llm.py`, `.env`, and `.env.example`.
 - Flexible Status Dispatch: Updated `SessionState.send_status` in `src/api/router.py` to accept `extra: dict | None` and `**kwargs`, merging auxiliary telemetry and cancellation flags into status JSON frames.
 - Latency Optimizations:
@@ -209,7 +223,7 @@
   `uv run ruff format --check src tests`
   Result: 21 files already formatted.
 - **Pytest:**
-  Full test suite passing (all unit, integration, and live VAD tests).
+  Full test suite passing: 44 passed, 1 skipped (live Gemini smoke test skipped without real key).
 - **Live Gemini Stream:**
   `gemini-3.6-flash` live verified with streaming sentence chunking and retry handlers.
 
@@ -217,7 +231,8 @@
 - None. Full pipeline operational: VAD (Silero-VAD v5 with context), STT (Whisper-tiny.en INT8 greedy), LLM (Gemini 3.6 Flash streaming), TTS (Kokoro-82M ONNX 4-thread sub-clause streaming), WebSocket orchestration, and Web Client workbench.
 
 ## 6. Next Immediate Step
-- Phase 8: Containerization, CI/CD & Production Deployment (`Dockerfile`, `docker-compose.yml`, GitHub Actions CI pipeline, performance benchmarks).
+- Phase 8 (in progress): Containerization, CI/CD & Production Deployment — `scripts/download_models.py`, `Dockerfile` (multi-stage, zero cold-start model downloads), `docker-compose.yml`, `.github/workflows/ci.yml` (ruff + pytest + docker build/push GHCR), README updates.
+- Phase 8 constraint: Dockerfile must bake Silero-VAD, Whisper tiny.en, Kokoro-82M weights into the image (build-time download stage) so production container has no cold-start model downloads.
 
 
 

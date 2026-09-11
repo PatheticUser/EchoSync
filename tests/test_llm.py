@@ -12,6 +12,7 @@ from google.genai.errors import APIError
 from src.core.llm import (
     GeminiLLM,
     SentenceChunker,
+    build_contents,
     clean_speech_text,
     is_retryable_llm_error,
 )
@@ -114,6 +115,81 @@ async def test_gemini_llm_stream_sentence_chunks_mocked() -> None:
     assert clauses[0] == "Paris is the capital of France."
     assert clauses[1] == "It is famous for the Eiffel Tower."
     assert clauses[2] == "Have a nice day!"
+
+
+def test_build_contents_empty_history() -> None:
+    """Verify a single user prompt when no conversation history exists."""
+    contents = build_contents(None, "Hello there", max_turns=8)
+    assert contents == [{"role": "user", "parts": [{"text": "Hello there"}]}]
+
+
+def test_build_contents_preserves_alternation() -> None:
+    """Verify user/model alternation is preserved and current prompt closes the list."""
+    history = [
+        ("user", "What is the capital of France?"),
+        ("model", "Paris."),
+        ("user", "Is it on the Seine?"),
+        ("model", "Yes, it is."),
+    ]
+    contents = build_contents(history, "What is the Eiffel Tower?", max_turns=8)
+
+    roles = [c["role"] for c in contents]
+    assert roles == ["user", "model", "user", "model", "user"]
+    assert contents[-1]["parts"][0]["text"] == "What is the Eiffel Tower?"
+    assert contents[0]["parts"][0]["text"] == "What is the capital of France?"
+
+
+def test_build_contents_trims_to_max_turns() -> None:
+    """Verify history trims to the trailing `max_turns` turn pairs."""
+    pairs = [pair for i in range(3) for pair in (("user", f"turn {i}"), ("model", f"reply {i}"))]
+    contents = build_contents(pairs, "Now what?", max_turns=1)
+
+    # Only the last pair survives trimming (2 messages) + closing user prompt
+    assert len(contents) == 3
+    assert contents[0]["role"] == "user"
+    assert contents[0]["parts"][0]["text"] == "turn 2"
+    assert contents[1]["role"] == "model"
+    assert contents[1]["parts"][0]["text"] == "reply 2"
+    assert contents[2]["parts"][0]["text"] == "Now what?"
+
+
+def test_build_contents_repairs_broken_role_sequence() -> None:
+    """Verify leading model message is dropped and adjacent same-role texts merge."""
+    history = [
+        ("model", "Orphan echo."),
+        ("model", "Still model."),
+        ("user", "First real user line."),
+    ]
+    contents = build_contents(history, "Go", max_turns=8)
+
+    assert contents[0]["role"] == "user"
+    assert contents[0]["parts"][0]["text"] == "First real user line."
+    assert contents[1]["role"] == "user"
+    assert contents[1]["parts"][0]["text"] == "Go"
+    assert len(contents) == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_sentence_chunks_sends_history_contents() -> None:
+    """Verify history is threaded into the Gemini contents payload."""
+    mock_chunks = [MockChunk(text="Sure, the Eiffel Tower is in Paris.")]
+    mock_client = MagicMock()
+    mock_client.aio.models.generate_content_stream = AsyncMock(
+        return_value=async_generator(mock_chunks)
+    )
+
+    llm = GeminiLLM(api_key="mock_key", client=mock_client)
+    history = [("user", "Where is the Eiffel Tower?"), ("model", "It is in Paris.")]
+    clauses: list[str] = []
+    async for clause in llm.stream_sentence_chunks("Tell me more.", history=history, min_chars=5):
+        clauses.append(clause)
+
+    kwargs = mock_client.aio.models.generate_content_stream.call_args.kwargs
+    sent_contents = kwargs["contents"]
+    sent_roles = [c["role"] for c in sent_contents]
+    assert sent_roles == ["user", "model", "user"]
+    assert sent_contents[-1]["parts"][0]["text"] == "Tell me more."
+    assert len(clauses) == 1
 
 
 @pytest.mark.asyncio

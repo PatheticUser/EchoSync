@@ -58,7 +58,7 @@ def test_websocket_audio_ingestion_and_turn_flow(client: TestClient) -> None:
         audio_duration_s=1.0,
     )
 
-    async def mock_stream_sentence_chunks(prompt: str):
+    async def mock_stream_sentence_chunks(prompt: str, **kwargs):
         yield "The weather is sunny and warm."
 
     async def mock_synthesize_stream(text: str):

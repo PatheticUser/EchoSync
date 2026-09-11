@@ -110,6 +110,31 @@ def is_retryable_llm_error(exc: BaseException) -> bool:
     return False
 
 
+def build_contents(
+    history: list[tuple[str, str]] | None,
+    prompt: str,
+    max_turns: int = 8,
+) -> list[dict[str, Any]]:
+    """Build genai `contents` list from rolling history plus the current user prompt.
+
+    Enforces strict user/model alternation starting on a user message so the API
+    never receives a malformed role sequence after prefix trimming or partial turns.
+    """
+    contents: list[dict[str, Any]] = []
+    if history:
+        for role, text in list(history)[-max_turns * 2 :]:
+            norm_role = "user" if role == "user" else "model"
+            if contents and contents[-1]["role"] == norm_role:
+                contents[-1]["parts"][0]["text"] += "\n" + text
+            else:
+                contents.append({"role": norm_role, "parts": [{"text": text}]})
+        # Drop any leading model echoes so the history always opens on a user statement.
+        while contents and contents[0]["role"] != "user":
+            contents.pop(0)
+    contents.append({"role": "user", "parts": [{"text": prompt}]})
+    return contents
+
+
 class GeminiLLM:
     """Gateway for Google GenAI streaming generation with resilient retry logic."""
 
@@ -118,15 +143,17 @@ class GeminiLLM:
         api_key: str | SecretStr,
         model_name: str = "gemini-3.6-flash",
         system_prompt: str = DEFAULT_VOICE_SYSTEM_PROMPT,
+        memory_turns: int = 8,
         client: Any | None = None,
     ) -> None:
         key_str = api_key.get_secret_value() if isinstance(api_key, SecretStr) else api_key
         self.api_key = key_str
         self.model_name = model_name
         self.system_prompt = system_prompt
+        self.memory_turns = max(0, memory_turns)
         self._client = client or genai.Client(api_key=self.api_key)
 
-    async def _call_stream_with_retry(self, prompt: str) -> Any:
+    async def _call_stream_with_retry(self, contents: list[dict[str, Any]]) -> Any:
         """Execute generate_content_stream with Tenacity AsyncRetrying backoff."""
         retrying = AsyncRetrying(
             retry=retry_if_exception(is_retryable_llm_error),
@@ -146,14 +173,20 @@ class GeminiLLM:
                 async with asyncio.timeout(5.0):
                     return await self._client.aio.models.generate_content_stream(
                         model=self.model_name,
-                        contents=prompt,
+                        contents=contents,
                         config=config,
                     )
         raise RuntimeError("Failed to obtain streaming generator from Gemini API")
 
-    async def stream_tokens(self, prompt: str) -> AsyncIterator[str]:
+    async def stream_tokens(
+        self,
+        prompt: str,
+        contents: list[dict[str, Any]] | None = None,
+    ) -> AsyncIterator[str]:
         """Stream individual text token chunks from Gemini."""
-        stream = await self._call_stream_with_retry(prompt)
+        if contents is None:
+            contents = [{"role": "user", "parts": [{"text": prompt}]}]
+        stream = await self._call_stream_with_retry(contents)
         async for chunk in stream:
             text = getattr(chunk, "text", None)
             if text:
@@ -163,10 +196,16 @@ class GeminiLLM:
         self,
         prompt: str,
         min_chars: int = 20,
+        history: list[tuple[str, str]] | None = None,
     ) -> AsyncIterator[str]:
-        """Stream grammatically complete sentence clauses ready for TTS synthesis."""
+        """Stream grammatically complete sentence clauses ready for TTS synthesis.
+
+        `history` carries prior (role, text) pairs; the current prompt forms the
+        closing user message so the model can reference earlier turns.
+        """
         chunker = SentenceChunker(min_chars=min_chars)
-        async for token in self.stream_tokens(prompt):
+        contents = build_contents(history, prompt, self.memory_turns)
+        async for token in self.stream_tokens(prompt, contents=contents):
             clauses = chunker.feed(token)
             for clause in clauses:
                 yield clause

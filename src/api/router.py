@@ -6,6 +6,7 @@ import json
 import logging
 import time
 import uuid
+from collections import deque
 from dataclasses import asdict
 from typing import Any
 
@@ -46,6 +47,8 @@ class SessionState:
         self.audio_queue: asyncio.Queue[bytes] = asyncio.Queue(
             maxsize=get_settings().max_buffer_chunks
         )
+        # Rolling (role, text) conversation memory; only completed turns are retained.
+        self.memory: deque[tuple[str, str]] = deque(maxlen=get_settings().llm_memory_turns * 2)
 
     async def send_status(
         self,
@@ -70,10 +73,23 @@ class SessionState:
         await self.websocket.send_json(payload)
 
     def cancel_active_generation(self) -> None:
-        """Cancel any running turn synthesis task to support barge-in."""
+        """Cancel any running turn synthesis task without awaiting (sync / control path)."""
         if self.active_turn_task and not self.active_turn_task.done():
             self.active_turn_task.cancel()
             self.active_turn_task = None
+
+    async def stop_active_turn(self) -> None:
+        """Cancel and await any running turn task before starting a new utterance.
+
+        Fully drains the previous task (including its CancelledError handler) so
+        stale status/audio frames never race a newly spawned dialogue turn.
+        """
+        task = self.active_turn_task
+        self.active_turn_task = None
+        if task and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
 
 @router.websocket("/ws/audio")
@@ -181,13 +197,16 @@ async def websocket_audio_endpoint(websocket: WebSocket) -> None:
                 }
             )
 
-            # 2. LLM Streaming
+            # 2. LLM Streaming (with rolling conversation memory of completed turns)
             await session.send_status("STREAMING_LLM", turn_id)
             llm_t0 = time.perf_counter()
             first_clause = True
             chunk_index = 0
+            assistant_text_parts: list[str] = []
 
-            async for clause in session.llm.stream_sentence_chunks(transcript):
+            async for clause in session.llm.stream_sentence_chunks(
+                transcript, history=list(session.memory)
+            ):
                 if first_clause:
                     metrics.llm_ttft_ms = (time.perf_counter() - llm_t0) * 1000.0
                     first_clause = False
@@ -217,8 +236,13 @@ async def websocket_audio_endpoint(websocket: WebSocket) -> None:
                         first_audio_chunk = False
 
                     await websocket.send_bytes(audio_chunk)
+                assistant_text_parts.append(clause)
 
-            # Turn completed successfully
+            # Turn completed successfully: persist to memory only on full completion.
+            # Cancelled/interrupted turns never append, preserving user/model alternation.
+            if assistant_text_parts:
+                session.memory.append(("user", transcript))
+                session.memory.append(("model", " ".join(assistant_text_parts)))
             log_turn_telemetry(session.session_id, turn_id, metrics, transcript)
             await session.send_status("LISTENING", turn_id, extra={"metrics": asdict(metrics)})
 
@@ -241,13 +265,19 @@ async def websocket_audio_endpoint(websocket: WebSocket) -> None:
 
             vad_event = await session.vad.async_process_frame(frame)
 
-            # Emit diagnostic log on active speech, elevated probability, or periodic heartbeat
-            if (
-                vad_event.probability >= 0.15
-                or vad_event.state != VADState.SILENCE
-                or frame_count % 50 == 0
-            ):
+            # Per-frame speech details at DEBUG to avoid log spam (30+ msg/sec during speech);
+            # a periodic 50-frame heartbeat stays at INFO for liveness visibility.
+            if frame_count % 50 == 0:
                 logger.info(
+                    "Heartbeat frame #%d: %d bytes, RMS: %.5f | VAD prob: %.4f, state: %s",
+                    frame_count,
+                    len(frame),
+                    rms,
+                    vad_event.probability,
+                    vad_event.state.value,
+                )
+            elif vad_event.probability >= 0.15 or vad_event.state != VADState.SILENCE:
+                logger.debug(
                     "Frame #%d: %d bytes, RMS: %.5f | VAD prob: %.4f, state: %s",
                     frame_count,
                     len(frame),
@@ -259,7 +289,7 @@ async def websocket_audio_endpoint(websocket: WebSocket) -> None:
             if vad_event.state == VADState.SPEECH_ACTIVE:
                 # If user speaks while system is speaking, trigger barge-in cutoff
                 if session.current_state in ("SPEAKING", "STREAMING_LLM"):
-                    session.cancel_active_generation()
+                    await session.stop_active_turn()
                     await session.send_status("LISTENING")
 
             elif vad_event.state == VADState.SPEECH_END and vad_event.audio_buffer is not None:
@@ -270,7 +300,7 @@ async def websocket_audio_endpoint(websocket: WebSocket) -> None:
                     vad_event.duration_ms,
                     turn_id,
                 )
-                session.cancel_active_generation()
+                await session.stop_active_turn()
                 session.active_turn_task = asyncio.create_task(
                     execute_dialogue_turn(
                         audio_buffer=vad_event.audio_buffer,

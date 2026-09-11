@@ -203,22 +203,20 @@ Package the complete application into a multi-stage Docker container with pre-ca
 ### 2. Implementation Steps
 
 1. Build `Dockerfile`:
-* Multi-stage build using `python:3.11-slim-bookworm`.
-* Install system dependencies: `ffmpeg`, `libasound2-dev`.
-* Pre-download model weights into `/app/models/` during image build to prevent cold-start downloads.
-
+* Multi-stage build: `ghcr.io/astral-sh/uv:python3.11-bookworm-slim` builder + `python:3.11-slim-bookworm` runtime.
+* Install system dependencies: `espeak-ng`, `ffmpeg`, `libasound2`.
+* Bake model weights (Silero-VAD, Whisper tiny.en, Kokoro-82M) into `/app/models/` during image build via `scripts/download_models.py` — zero cold-start downloads. Run as non-root `appuser` (uid 10001). HEALTHCHECK on `/healthz`.
 
 2. Create `docker-compose.yml` for local container testing.
 3. Configure `.github/workflows/ci.yml`:
 * Run `ruff` linting and formatting checks.
 * Execute `pytest` test suite.
-* Validate Docker build.
-
-
-4. Deploy the container to a target cloud host (e.g., Render, Railway, or Koyeb).
+* Build Docker image; push `ghcr.io/<owner>/<repo>` (`latest` + `sha-<short>`) on `main` via GHCR with BuildKit cache.
+4. Deploy the container to a target cloud host (e.g., Render, Railway, or Koyeb): pull the `latest` GHCR image — one-click.
 
 ### 3. Verification & Exit Criteria
 
-* CI Pipeline: Green run on GitHub Actions across all jobs.
-* Container Health: `GET /ready` returns HTTP 200 on the deployed container.
-* Final Demonstration: Live conversational exchange through deployed cloud URL.
+* CI Pipeline: Green run on GitHub Actions across all jobs (pending first push).
+* Container Health: `GET /healthz` HTTP 200 and `GET /ready` HTTP 200 — verified locally 2026-09-11 (all models loaded, ~694MB RSS, up+healthy).
+* Container Functionality: `/` serves workbench (HTTP 200), WebSocket `/ws/audio` handshake returns `LISTENING`, audio chunks ingested — verified locally.
+* Final Demonstration: Live conversational exchange through deployed cloud URL (requires cloud host + `GEMINI_API_KEY`).
