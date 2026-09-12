@@ -32,6 +32,21 @@ def test_ready_readiness_probe(client: TestClient) -> None:
     assert data["memory_rss_mb"] > 0
 
 
+def test_metrics_endpoint(client: TestClient) -> None:
+    """Verify GET /metrics exposes Prometheus dashboard metrics."""
+    # Warm the instrumentator middleware so http_requests_total is registered.
+    client.get("/healthz")
+
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert "text/plain" in response.headers.get("content-type", "")
+    body = response.text
+    assert "http_requests_total" in body
+    assert "echosync_turns_total" in body
+    assert "echosync_ws_connections_active" in body
+    assert "echosync_turn_rtt_seconds" in body
+
+
 def test_static_workbench_routes(client: TestClient) -> None:
     """Verify GET / and GET /app return 200 OK with HTML content."""
     root_res = client.get("/")

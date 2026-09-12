@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from src.api.metrics import active_ws_connections, ws_connections_total
 from src.api.telemetry import PipelineMetrics, log_turn_telemetry
 from src.config import get_settings
 from src.core.llm import GeminiLLM
@@ -96,6 +97,8 @@ class SessionState:
 async def websocket_audio_endpoint(websocket: WebSocket) -> None:
     """Bidirectional WebSocket streaming endpoint for low-latency conversational audio."""
     await websocket.accept()
+    ws_connections_total.inc()
+    active_ws_connections.inc()
     settings = get_settings()
     session_id = f"ses_{uuid.uuid4().hex[:8]}"
 
@@ -328,3 +331,4 @@ async def websocket_audio_endpoint(websocket: WebSocket) -> None:
         receiver_task.cancel()
         worker_task.cancel()
         session.vad.reset()
+        active_ws_connections.dec()

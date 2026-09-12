@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import FastAPI, status
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from src.api.router import router
 from src.api.telemetry import get_host_metrics
@@ -75,6 +76,10 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(router)
+
+    # Expose Prometheus /metrics: HTTP request totals/errors/durations from the
+    # instrumentator plus the custom echosync_* collectors in src.api.metrics.
+    Instrumentator().instrument(app).expose(app, include_in_schema=False)
 
     static_dir = Path(__file__).resolve().parent / "static"
     if static_dir.exists():
