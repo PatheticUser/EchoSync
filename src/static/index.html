@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="EchoSync — low-latency edge/cloud hybrid voice agent. Private by design, real-time by architecture.">
-  <title>EchoSync — Talk to AI in Real Time</title>
+  <title>EchoSync</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='32' y2='32' gradientUnits='userSpaceOnUse'><stop offset='0' stop-color='%2322d3ee'/><stop offset='1' stop-color='%238b5cf6'/></linearGradient></defs><rect width='32' height='32' rx='7' fill='url(%23g)'/><path d='M4 16h4l2-6 4 12 4-10 2 4h8' stroke='%2304131c' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -121,8 +122,13 @@
       background: var(--bg-2); position: relative; padding: 3px; transition: all 0.25s var(--ease-out);
     }
     .theme-toggle:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
-    .theme-thumb { width: 22px; height: 22px; border-radius: 50%; background: var(--grad-signal); box-shadow: 0 0 10px rgba(34, 211, 238, 0.5); transform: translateX(0); transition: transform 0.28s var(--ease-out); }
+    .theme-thumb { width: 22px; height: 22px; border-radius: 50%; background: var(--grad-signal); box-shadow: 0 0 10px rgba(34, 211, 238, 0.5); transform: translateX(0); transition: transform 0.28s var(--ease-out); display: grid; place-items: center; position: relative; }
     html.light .theme-thumb { transform: translateX(26px); }
+    .theme-thumb svg { width: 13px; height: 13px; color: #04131c; position: absolute; transition: opacity 0.2s, transform 0.25s var(--ease-out); }
+    .theme-thumb .icon-moon { opacity: 0; transform: rotate(-90deg) scale(0.5); }
+    .theme-thumb .icon-sun { opacity: 1; transform: rotate(0deg) scale(1); }
+    html.light .theme-thumb .icon-moon { opacity: 1; transform: rotate(0deg) scale(1); }
+    html.light .theme-thumb .icon-sun { opacity: 0; transform: rotate(90deg) scale(0.5); }
     .theme-label { font-family: var(--font-mono); font-size: 10px; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.1em; }
 
     .btn {
@@ -341,6 +347,28 @@
       .orb { animation: none; }
     }
 
+    /* ============ LOADING SCREEN ============ */
+    .loading-screen {
+      position: fixed; inset: 0; z-index: 9999; background: #05070d;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;
+      transition: opacity 0.5s var(--ease-out), visibility 0.5s;
+    }
+    .loading-screen.done { opacity: 0; visibility: hidden; pointer-events: none; }
+    html.light .loading-screen { background: #f6f8fc; }
+    .loading-logo { width: 64px; height: 64px; border-radius: 18px; background: var(--grad-signal); display: grid; place-items: center; box-shadow: 0 0 40px rgba(34, 211, 238, 0.45); animation: loadPulse 1.4s ease-in-out infinite; }
+    .loading-logo svg { width: 36px; height: 36px; color: #04131c; }
+    @keyframes loadPulse { 0%, 100% { transform: scale(1); box-shadow: 0 0 40px rgba(34, 211, 238, 0.45); } 50% { transform: scale(1.06); box-shadow: 0 0 56px rgba(139, 92, 246, 0.5); } }
+    .loading-name { font-family: var(--font-display); font-weight: 700; font-size: 24px; letter-spacing: -0.02em; color: var(--text-0); }
+    .loading-bars { display: flex; align-items: flex-end; gap: 4px; height: 18px; }
+    .loading-bars span { width: 3px; background: var(--grad-signal); border-radius: 2px; animation: loadBar 1s ease-in-out infinite alternate; }
+    .loading-bars span:nth-child(1) { height: 6px; animation-delay: 0s; }
+    .loading-bars span:nth-child(2) { height: 14px; animation-delay: 0.12s; }
+    .loading-bars span:nth-child(3) { height: 10px; animation-delay: 0.24s; }
+    .loading-bars span:nth-child(4) { height: 18px; animation-delay: 0.36s; }
+    .loading-bars span:nth-child(5) { height: 8px; animation-delay: 0.48s; }
+    @keyframes loadBar { to { transform: scaleY(0.35); opacity: 0.4; } }
+    @media (prefers-reduced-motion: reduce) { .loading-screen, .loading-logo, .loading-bars span { animation: none !important; } }
+
     /* ============ RESPONSIVE ============ */
     @media (max-width: 900px) {
       .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -356,6 +384,15 @@
   </style>
 </head>
 <body>
+  <!-- Loading Screen -->
+  <div class="loading-screen" id="loadingScreen" aria-hidden="true">
+    <div class="loading-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l2-5 3 10 3-8 2 3h7"/></svg>
+    </div>
+    <div class="loading-name">EchoSync</div>
+    <div class="loading-bars"><span></span><span></span><span></span><span></span><span></span></div>
+  </div>
+
   <div class="scene" aria-hidden="true">
     <div class="orb orb-c"></div>
     <div class="orb orb-v"></div>
@@ -379,7 +416,10 @@
       </div>
       <div class="nav-actions">
         <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
-          <span class="theme-thumb" id="themeThumb"></span>
+          <span class="theme-thumb" id="themeThumb">
+            <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+            <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+          </span>
         </button>
         <span class="theme-label" id="themeLabel">Dark</span>
         <a href="/app" class="btn btn-primary">Launch Console <span class="arrow">&rarr;</span></a>
@@ -407,7 +447,7 @@
         <a href="/app" class="btn btn-primary btn-lg">Try Now <span class="arrow">&rarr;</span></a>
         <a href="#pipeline" class="btn btn-lg">See the pipeline</a>
       </div>
-      <p class="line-anim hero-note" style="--d:0.48s">No sign-up. No account. Mic in b>12 ms, reply out in under <b>800 ms</b>.</p>
+      <p class="line-anim hero-note" style="--d:0.48s">No sign-up. No account. Mic in <b>&lt;12 ms</b>, reply out in under <b>800 ms</b>.</p>
 
       <!-- Animated demo visual -->
       <div class="line-anim hero-visual" style="--d:0.56s">
@@ -798,6 +838,14 @@
         reply.textContent = 'Patchy clouds, 19 degrees, light wind from the west.';
       }
     })();
+
+      // Dismiss loading screen
+      window.addEventListener('load', function () {
+        setTimeout(function () {
+          var ls = document.getElementById('loadingScreen');
+          if (ls) ls.classList.add('done');
+        }, 600);
+      });
   </script>
 </body>
 </html>
