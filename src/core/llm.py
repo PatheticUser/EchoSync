@@ -41,10 +41,13 @@ def clean_speech_text(text: str) -> str:
 class SentenceChunker:
     """Accumulator that parses streaming text tokens into vocalizable sentence clauses."""
 
-    def __init__(self, min_chars: int = 12, early_first_chunk: bool = True) -> None:
+    def __init__(self, min_chars: int = 20, early_first_chunk: bool = True) -> None:
         self.min_chars = min_chars
         self.early_first_chunk = early_first_chunk
-        self._standard_pattern = re.compile(r"([.!?;:])(?:\s+|\n+)")
+        # T1.3: emit only at sentence-terminal punctuation, so comma/colon
+        # clauses no longer produce staccato TTS chunks; the first-chunk fast
+        # path keeps comma/semicolon/colon so the first clause streams early.
+        self._standard_pattern = re.compile(r"([.!?])(?:\s+|\n+)")
         self._first_pattern = re.compile(r"([.!?;:,])(?:\s+|\n+)")
         self._buffer = ""
         self._is_first_chunk = early_first_chunk
@@ -193,7 +196,7 @@ class GeminiLLM:
     async def stream_sentence_chunks(
         self,
         prompt: str,
-        min_chars: int = 12,
+        min_chars: int = 20,
         history: list[tuple[str, str]] | None = None,
     ) -> AsyncIterator[str]:
         """Stream grammatically complete sentence clauses ready for TTS synthesis.
