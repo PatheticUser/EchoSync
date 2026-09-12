@@ -347,6 +347,7 @@ async def websocket_audio_endpoint(websocket: WebSocket) -> None:
                 transcript,
                 history=list(session.memory),
                 min_chars=settings.llm_chunk_min_chars,
+                early_first_chunk=settings.llm_chunk_early_first,
             ):
                 if first_clause:
                     metrics.llm_ttft_ms = (time.perf_counter() - llm_t0) * 1000.0
