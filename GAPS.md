@@ -8,6 +8,22 @@ Accuracy below target (voice pipeline), production hardening incomplete, zero ob
 
 **Deploy decision (pending)**: stage-first. Deploy to private staging env now, iterate accuracy live, go public when accuracy + Tier-2 gates pass. CI/CD makes every commit auto-build; deploy is not the risk, public exposure is.
 
+## Progress (updated 2026-09-12)
+
+**DONE (merged to main, full pytest green 68 passed/1 skipped):**
+- T1.2 VAD window knobs · T1.3 chunker sentence-boundary · T1.4 LLM gen params · T1.5 prompt rewrite
+- T2.1–T2.3 WS admission gate (origin allowlist, concurrency + per-IP caps, optional bearer token)
+- T3.1 unified JSON logging · T3.3 Prometheus /metrics
+- T4.1 CI Railway deploy job
+- Commit range: `194e413` → `HEAD` (8 merge commits). All landed via parallel agent branches beneath `git log --graph`.
+
+**PENDING:**
+- T1.1 whisper tiny/base/small A/B bench (needs live mic corpus) — run after T1.2+T1.3 tuning
+- T1.6 latency budget harness (scripts/bench_turn.py) — gate before staging
+- T3.2 log drain · T3.4 dashboards/alerts · T3.5 uptime pings · T3.6–3.7 sentry/tracing (post-staging)
+- T4.2 WS keepalive ping · T4.3 instance sizing docs · T4.4 cost lock
+- Staging deploy: Railway account, env vars (GEMINI_API_KEY; WS_ALLOWED_ORIGINS=https://<app>.up.railway.app; APP_ENV=production), healthcheck start_period
+
 ---
 
 ## Tier 0 — Deploy posture (prereq, one-time)
