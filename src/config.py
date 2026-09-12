@@ -118,6 +118,30 @@ class Settings(BaseSettings):
         description="Minimum character length of a speech clause before the streaming chunker emits it for TTS",
     )
 
+    # Model Parameters: LLM Generation (Gemini)
+    llm_temperature: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature for Gemini text generation, 0.0-2.0",
+    )
+    llm_top_p: float = Field(
+        default=0.95,
+        ge=0.0,
+        le=1.0,
+        description="Nucleus top-p sampling probability for Gemini text generation",
+    )
+    llm_max_output_tokens: int = Field(
+        default=150,
+        ge=1,
+        description="Maximum number of tokens in a Gemini generation reply",
+    )
+    llm_timeout_s: float = Field(
+        default=5.0,
+        gt=0.0,
+        description="Per-attempt timeout in seconds for a Gemini streaming request",
+    )
+
     # Local Model Cache Paths
     model_cache_dir: Path = Field(
         default=Path("./models"),
