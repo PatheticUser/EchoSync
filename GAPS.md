@@ -10,12 +10,13 @@ Accuracy below target (voice pipeline), production hardening incomplete, zero ob
 
 ## Progress (updated 2026-09-12)
 
-**DONE (merged to main, full pytest green 68 passed/1 skipped):**
+**DONE (merged to main, full pytest green 79 passed/1 skipped):**
 - T1.2 VAD window knobs · T1.3 chunker sentence-boundary · T1.4 LLM gen params · T1.5 prompt rewrite
 - T2.1–T2.3 WS admission gate (origin allowlist, concurrency + per-IP caps, optional bearer token)
+- T2.4 VAD interrupt probability gate (`VAD_INTERRUPT_PROB`)
 - T3.1 unified JSON logging · T3.3 Prometheus /metrics
 - T4.1 CI Railway deploy job
-- Commit range: `194e413` → `HEAD` (8 merge commits). All landed via parallel agent branches beneath `git log --graph`.
+- Commit range: `194e413` → `HEAD` (10 merge commits). All landed via parallel agent branches beneath `git log --graph`.
 
 **PENDING:**
 - T1.1 whisper tiny/base/small A/B bench (needs live mic corpus) — run after T1.2+T1.3 tuning
