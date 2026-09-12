@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import hmac
 import json
 import logging
 import time
@@ -15,7 +16,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from src.api.metrics import active_ws_connections, ws_connections_total
 from src.api.telemetry import PipelineMetrics, log_turn_telemetry
-from src.config import get_settings
+from src.config import Settings, get_settings
 from src.core.llm import GeminiLLM
 from src.core.stt import WhisperSTT
 from src.core.tts import KokoroTTS
@@ -23,6 +24,86 @@ from src.core.vad import SileroVAD, VADState
 
 router = APIRouter()
 logger = logging.getLogger("echosync.router")
+
+# ---------------------------------------------------------------------------
+# WebSocket admission gate (T2.1 origin allowlist, T2.2 concurrency + per-IP
+# caps, T2.3 optional bearer token). All checks run before ``accept()`` so a
+# rejected client never enters the audio/VAD/LLM pipeline.
+# ---------------------------------------------------------------------------
+
+#: WebSocket close code used when the admission gate refuses a connection
+#: (unknown Origin, or a concurrency / per-IP cap is exhausted).
+WS_CLOSE_REJECTED = 4403
+#: WebSocket close code used when T2.3 requires a bearer token and none (or an
+#: invalid one) was presented.
+WS_CLOSE_UNAUTHORIZED = 4401
+
+#: Process-wide bound on simultaneous /ws/audio sessions (T2.2). Module-level
+#: so the cap is shared across every connection on the event loop. Because the
+#: endpoint only calls ``acquire()`` after a synchronous ``locked()`` check, it
+#: never creates blocked waiters (garnering FIFO bookkeeping) on the reject path.
+_ws_concurrency_semaphore: asyncio.Semaphore = asyncio.Semaphore(get_settings().ws_max_concurrent)
+
+#: Active /ws/audio session count keyed by client IP (T2.2). A plain dict is
+#: safe here: each check-and-increment is a single synchronous block with no
+#: ``await`` in between, so it is atomic on the asyncio event loop.
+_ws_active_by_ip: dict[str, int] = {}
+
+
+def _is_origin_allowed(origin: str | None, settings: Settings) -> bool:
+    """Return whether an inbound ``Origin`` header passes the T2.1 allowlist.
+
+    Browser-backed deployments must present an Origin in ``ws_allowed_origins``.
+    Non-browser clients (local dev workbench, CLIs) often omit the header; that
+    is tolerated only when ``app_env == "development"`` and rejected everywhere
+    else, so a public deployment still requires an allowlisted Origin.
+    """
+    if origin is None:
+        return settings.app_env == "development"
+    return origin in settings.ws_allowed_origins
+
+
+def _client_ip(websocket: WebSocket) -> str:
+    """Best-effort client IP for the T2.2 per-IP cap.
+
+    Prefers the first ``X-Forwarded-For`` entry (written by the Railway / nginx
+    edge proxy), then ``X-Real-IP``, then the direct peer address. A client that
+    can reach this server directly can fake these headers, so the origin
+    allowlist (T2.1) and optional bearer token (T2.3) remain the primary abuse
+    controls; the per-IP cap is best-effort bookkeeping.
+    """
+    forwarded = websocket.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real_ip = websocket.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+    client = websocket.client
+    return client.host if client else "unknown"
+
+
+def _bearer_token_matches(authorization: str | None, expected: str) -> bool:
+    """Constant-time T2.3 check of an ``Authorization: Bearer <token>`` header."""
+    if not authorization:
+        return False
+    scheme, _, credentials = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not credentials:
+        return False
+    return hmac.compare_digest(credentials.strip(), expected)
+
+
+def _ws_release_slot(client_ip: str) -> None:
+    """Release the T2.2 admission slots held by a closing session.
+
+    Purely synchronous so it is safe to call from a ``finally`` block even when
+    the coroutine is being cancelled.
+    """
+    remaining = _ws_active_by_ip.get(client_ip, 1) - 1
+    if remaining > 0:
+        _ws_active_by_ip[client_ip] = remaining
+    else:
+        _ws_active_by_ip.pop(client_ip, None)
+    _ws_concurrency_semaphore.release()
 
 
 class SessionState:
@@ -95,47 +176,102 @@ class SessionState:
 
 @router.websocket("/ws/audio")
 async def websocket_audio_endpoint(websocket: WebSocket) -> None:
-    """Bidirectional WebSocket streaming endpoint for low-latency conversational audio."""
-    await websocket.accept()
-    ws_connections_total.inc()
-    active_ws_connections.inc()
+    """Bidirectional WebSocket streaming endpoint for low-latency conversational audio.
+
+    Admission gate (T2.1/T2.2/T2.3) runs before ``accept()``: a disallowed
+    Origin, a missing/invalid bearer token (when ``WS_BEARER_TOKEN`` is set), an
+    exhausted concurrency semaphore, or a breached per-IP cap each close the
+    socket with 4403/4401 and never enter the audio/VAD/LLM pipeline.
+    """
     settings = get_settings()
-    session_id = f"ses_{uuid.uuid4().hex[:8]}"
 
-    # Resolve shared or app-level model singletons from application state if available
-    app_state: Any = getattr(websocket.app, "state", None)
-    vad: SileroVAD = getattr(app_state, "vad", None) or SileroVAD(
-        model_path=settings.vad_model_path,
-        sample_rate=settings.sample_rate,
-        frame_size=settings.frame_size,
-        threshold=settings.vad_threshold,
-        silence_ms=settings.vad_silence_ms,
-    )
-    stt: WhisperSTT = getattr(app_state, "stt", None) or WhisperSTT(
-        model_name=settings.whisper_model_name,
-        compute_type=settings.whisper_compute_type,
-        cpu_threads=settings.whisper_cpu_threads,
-        download_root=settings.whisper_model_dir,
-        sample_rate=settings.sample_rate,
-    )
-    llm: GeminiLLM = getattr(app_state, "llm", None) or GeminiLLM(
-        api_key=settings.gemini_api_key,
-        model_name=settings.gemini_model,
-    )
-    tts: KokoroTTS = getattr(app_state, "tts", None) or KokoroTTS(
-        model_path=settings.kokoro_model_path,
-        voices_path=settings.kokoro_voices_path,
-    )
+    # T2.1 -- Origin allowlist. No-Origin is tolerated in development (local
+    # workbench / CLI clients) and rejected in any non-development deployment.
+    origin = websocket.headers.get("origin")
+    if not _is_origin_allowed(origin, settings):
+        logger.warning("Rejecting /ws/audio handshake: Origin %r not allowlisted", origin)
+        await websocket.close(code=WS_CLOSE_REJECTED)
+        return
 
-    session = SessionState(
-        websocket=websocket,
-        session_id=session_id,
-        vad=vad,
-        stt=stt,
-        llm=llm,
-        tts=tts,
-    )
-    await session.send_status("LISTENING")
+    # T2.3 -- optional bearer token. Server-side check only: the demo frontend
+    # is out of scope for T2.3 and does not yet present an Authorization header.
+    if settings.ws_bearer_token is not None and not _bearer_token_matches(
+        websocket.headers.get("authorization"),
+        settings.ws_bearer_token.get_secret_value(),
+    ):
+        logger.warning("Rejecting /ws/audio handshake: missing or invalid bearer token")
+        await websocket.close(code=WS_CLOSE_UNAUTHORIZED)
+        return
+
+    # T2.2 -- process-wide concurrency cap.
+    if _ws_concurrency_semaphore.locked():
+        logger.warning(
+            "Rejecting /ws/audio handshake: concurrency cap (%d) reached",
+            settings.ws_max_concurrent,
+        )
+        await websocket.close(code=WS_CLOSE_REJECTED)
+        return
+
+    # T2.2 -- per-IP active-session cap.
+    client_ip = _client_ip(websocket)
+    if _ws_active_by_ip.get(client_ip, 0) >= settings.ws_max_per_ip:
+        logger.warning(
+            "Rejecting /ws/audio handshake: per-IP cap (%d) reached for %s",
+            settings.ws_max_per_ip,
+            client_ip,
+        )
+        await websocket.close(code=WS_CLOSE_REJECTED)
+        return
+
+    # Admitted: hold the admission slots for the whole session lifetime. The
+    # check-and-grab above is synchronous (no ``await`` between ``locked()`` and
+    # ``acquire()``), so the acquire can never create a blocked waiter.
+    await _ws_concurrency_semaphore.acquire()
+    _ws_active_by_ip[client_ip] = _ws_active_by_ip.get(client_ip, 0) + 1
+    try:
+        await websocket.accept()
+        ws_connections_total.inc()
+        active_ws_connections.inc()
+        session_id = f"ses_{uuid.uuid4().hex[:8]}"
+
+        # Resolve shared or app-level model singletons from application state if available
+        app_state: Any = getattr(websocket.app, "state", None)
+        vad: SileroVAD = getattr(app_state, "vad", None) or SileroVAD(
+            model_path=settings.vad_model_path,
+            sample_rate=settings.sample_rate,
+            frame_size=settings.frame_size,
+            threshold=settings.vad_threshold,
+            silence_ms=settings.vad_silence_ms,
+        )
+        stt: WhisperSTT = getattr(app_state, "stt", None) or WhisperSTT(
+            model_name=settings.whisper_model_name,
+            compute_type=settings.whisper_compute_type,
+            cpu_threads=settings.whisper_cpu_threads,
+            download_root=settings.whisper_model_dir,
+            sample_rate=settings.sample_rate,
+        )
+        llm: GeminiLLM = getattr(app_state, "llm", None) or GeminiLLM(
+            api_key=settings.gemini_api_key,
+            model_name=settings.gemini_model,
+        )
+        tts: KokoroTTS = getattr(app_state, "tts", None) or KokoroTTS(
+            model_path=settings.kokoro_model_path,
+            voices_path=settings.kokoro_voices_path,
+        )
+
+        session = SessionState(
+            websocket=websocket,
+            session_id=session_id,
+            vad=vad,
+            stt=stt,
+            llm=llm,
+            tts=tts,
+        )
+        await session.send_status("LISTENING")
+    except BaseException:
+        # A handshake or setup failure must never leak an admission slot.
+        _ws_release_slot(client_ip)
+        raise
 
     async def receive_frames_loop() -> None:
         """Demultiplex binary PCM chunks and text control frames from client."""
@@ -334,3 +470,5 @@ async def websocket_audio_endpoint(websocket: WebSocket) -> None:
         worker_task.cancel()
         session.vad.reset()
         active_ws_connections.dec()
+        # T2.2 -- prune the per-IP counter and free the concurrency slot.
+        _ws_release_slot(client_ip)

@@ -1,12 +1,13 @@
 """Runtime configuration management with Pydantic v2 validation."""
 
+import json
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, SecretStr, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -178,6 +179,42 @@ class Settings(BaseSettings):
         default=Path("./models/tts/voices.bin"),
         description="Path to Kokoro voices binary embedding file",
     )
+
+    # WebSocket Gateway Access Control (T2.1, T2.2, T2.3)
+    ws_allowed_origins: Annotated[list[str], NoDecode] = Field(
+        default=["http://127.0.0.1:8000", "http://localhost:8000"],
+        description="Allowed Origin header values for the /ws/audio WebSocket endpoint",
+    )
+    ws_max_concurrent: int = Field(
+        default=10,
+        ge=1,
+        description="Maximum concurrently active WebSocket audio sessions",
+    )
+    ws_max_per_ip: int = Field(
+        default=3,
+        ge=1,
+        description="Maximum simultaneously active WebSocket sessions per client IP",
+    )
+    ws_bearer_token: SecretStr | None = Field(
+        default=None,
+        description="Optional bearer token required via the Authorization header on every /ws/audio connection",
+    )
+
+    @field_validator("ws_allowed_origins", mode="before")
+    @classmethod
+    def parse_ws_allowed_origins(cls, v: object) -> object:
+        """Parse WS_ALLOWED_ORIGINS as JSON ``[..]`` or a comma-separated string."""
+        if isinstance(v, str):
+            txt = v.strip()
+            if txt.startswith("["):
+                try:
+                    parsed = json.loads(txt)
+                    if isinstance(parsed, list):
+                        return parsed
+                except json.JSONDecodeError:
+                    pass
+            return [item.strip() for item in txt.split(",") if item.strip()]
+        return v
 
 
 @lru_cache

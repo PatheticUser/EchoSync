@@ -114,3 +114,50 @@ def test_whisper_cpu_threads_zero_fallback() -> None:
 
     settings = Settings(gemini_api_key="key", whisper_cpu_threads=0, _env_file=None)
     assert settings.whisper_cpu_threads == min(4, os.cpu_count() or 2)
+
+
+def test_ws_gate_defaults() -> None:
+    """Verify T2.1/T2.2/T2.3 gate settings have safe production defaults."""
+    settings = Settings(gemini_api_key="key", _env_file=None)
+
+    assert settings.ws_allowed_origins == [
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+    ]
+    assert settings.ws_max_concurrent == 10
+    assert settings.ws_max_per_ip == 3
+    assert settings.ws_bearer_token is None
+
+
+def test_ws_gate_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify WS_ALLOWED_ORIGINS/WS_MAX_CONCURRENT/WS_MAX_PER_IP/WS_BEARER_TOKEN."""
+
+    monkeypatch.setenv("GEMINI_API_KEY", "key")
+    monkeypatch.setenv("WS_ALLOWED_ORIGINS", "https://app.example.com, https://dev.example.com")
+    monkeypatch.setenv("WS_MAX_CONCURRENT", "5")
+    monkeypatch.setenv("WS_MAX_PER_IP", "2")
+    monkeypatch.setenv("WS_BEARER_TOKEN", "s3cret")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.ws_allowed_origins == [
+        "https://app.example.com",
+        "https://dev.example.com",
+    ]
+    assert settings.ws_max_concurrent == 5
+    assert settings.ws_max_per_ip == 2
+    assert settings.ws_bearer_token is not None
+    assert settings.ws_bearer_token.get_secret_value() == "s3cret"
+
+
+def test_ws_allowed_origins_json_env_parsed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify WS_ALLOWED_ORIGINS also accepts a JSON array string."""
+    monkeypatch.setenv("GEMINI_API_KEY", "key")
+    monkeypatch.setenv("WS_ALLOWED_ORIGINS", '["https://a.example.com", "https://b.example.com"]')
+
+    settings = Settings(_env_file=None)
+
+    assert settings.ws_allowed_origins == [
+        "https://a.example.com",
+        "https://b.example.com",
+    ]
