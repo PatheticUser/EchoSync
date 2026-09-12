@@ -1,12 +1,15 @@
 """Unit and integration tests for WebSocket audio gateway and barge-in handling."""
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, patch
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
+from src.config import get_settings
 from src.core.stt import TranscriptionResult
 from src.core.vad import VADEvent, VADState
 from src.main import app
@@ -122,3 +125,106 @@ def test_websocket_audio_ingestion_and_turn_flow(client: TestClient) -> None:
         final_status = ws.receive_json()
         assert final_status["type"] == "status"
         assert final_status["data"]["state"] == "LISTENING"
+
+
+# ---------------------------------------------------------------------------
+# T2.1 / T2.2 / T2.3 admission gate tests. All rejections happen before accept
+# and surface client-side as WebSocketDisconnect with the configured code.
+# ---------------------------------------------------------------------------
+
+
+def test_websocket_rejects_disallowed_origin(client: TestClient) -> None:
+    """T2.1: a non-allowlisted Origin is refused with 4403 before accept."""
+    with (
+        pytest.raises(WebSocketDisconnect) as exc_info,
+        client.websocket_connect("/ws/audio", headers={"Origin": "https://evil.example"}),
+    ):
+        pass
+    assert exc_info.value.code == 4403
+
+
+def test_websocket_accepts_allowlisted_origin(client: TestClient) -> None:
+    """T2.1: an Origin on WS_ALLOWED_ORIGINS connects normally."""
+    with client.websocket_connect("/ws/audio", headers={"Origin": "http://127.0.0.1:8000"}) as ws:
+        msg = ws.receive_json()
+        assert msg["data"]["state"] == "LISTENING"
+
+
+def test_websocket_requires_origin_in_non_dev(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T2.1: outside development, a missing Origin (non-browser client) is refused."""
+    monkeypatch.setenv("APP_ENV", "production")
+    get_settings.cache_clear()
+    try:
+        with (
+            pytest.raises(WebSocketDisconnect) as exc_info,
+            client.websocket_connect("/ws/audio"),
+        ):
+            pass
+        assert exc_info.value.code == 4403
+    finally:
+        get_settings.cache_clear()
+
+
+def test_websocket_rejects_beyond_concurrency_cap(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T2.2: sessions beyond WS_MAX_CONCURRENT are refused with 4403."""
+    monkeypatch.setattr("src.api.router._ws_concurrency_semaphore", asyncio.Semaphore(1))
+    with client.websocket_connect("/ws/audio") as ws:
+        assert ws.receive_json()["data"]["state"] == "LISTENING"
+        # A second simultaneous session must be refused while the first holds the slot.
+        with (
+            pytest.raises(WebSocketDisconnect) as exc_info,
+            client.websocket_connect("/ws/audio"),
+        ):
+            pass
+        assert exc_info.value.code == 4403
+
+
+def test_websocket_rejects_beyond_per_ip_cap(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T2.2: more simultaneous sessions than WS_MAX_PER_IP from one IP close 4403."""
+    monkeypatch.setenv("WS_MAX_PER_IP", "1")
+    get_settings.cache_clear()
+    try:
+        with client.websocket_connect("/ws/audio") as ws:
+            assert ws.receive_json()["data"]["state"] == "LISTENING"
+            with (
+                pytest.raises(WebSocketDisconnect) as exc_info,
+                client.websocket_connect("/ws/audio"),
+            ):
+                pass
+            assert exc_info.value.code == 4403
+    finally:
+        get_settings.cache_clear()
+
+
+def test_websocket_bearer_token_gate(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """T2.3: when WS_BEARER_TOKEN is set, missing/invalid creds close 4401 and valid open."""
+    monkeypatch.setenv("WS_BEARER_TOKEN", "s3cret")
+    get_settings.cache_clear()
+    try:
+        with (
+            pytest.raises(WebSocketDisconnect) as missing_token,
+            client.websocket_connect("/ws/audio"),
+        ):
+            pass
+        assert missing_token.value.code == 4401
+
+        with (
+            pytest.raises(WebSocketDisconnect) as wrong_token,
+            client.websocket_connect("/ws/audio", headers={"Authorization": "Bearer wrong"}),
+        ):
+            pass
+        assert wrong_token.value.code == 4401
+
+        with client.websocket_connect(
+            "/ws/audio", headers={"Authorization": "Bearer s3cret"}
+        ) as ws:
+            msg = ws.receive_json()
+            assert msg["data"]["state"] == "LISTENING"
+    finally:
+        get_settings.cache_clear()
