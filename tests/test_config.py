@@ -161,3 +161,21 @@ def test_ws_allowed_origins_json_env_parsed(monkeypatch: pytest.MonkeyPatch) -> 
         "https://a.example.com",
         "https://b.example.com",
     ]
+
+
+def test_llm_chunk_early_first_default() -> None:
+    """Verify the CHUNK-EARLY hyper-tune knob defaults to on."""
+    settings = Settings(gemini_api_key="key", _env_file=None)
+
+    assert settings.llm_chunk_min_chars == 20
+    assert settings.llm_chunk_early_first is True
+
+
+def test_llm_chunk_early_first_env_bool_parse(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify LLM_CHUNK_EARLY_FIRST parses as a boolean env var."""
+    monkeypatch.setenv("GEMINI_API_KEY", "key")
+    monkeypatch.setenv("LLM_CHUNK_EARLY_FIRST", "false")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.llm_chunk_early_first is False

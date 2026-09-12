@@ -209,13 +209,20 @@ class GeminiLLM:
         prompt: str,
         min_chars: int = 20,
         history: list[tuple[str, str]] | None = None,
+        early_first_chunk: bool = True,
     ) -> AsyncIterator[str]:
         """Stream grammatically complete sentence clauses ready for TTS synthesis.
 
         `history` carries prior (role, text) pairs; the current prompt forms the
         closing user message so the model can reference earlier turns.
+        `early_first_chunk` gates the first-chunk fast path (emitting at comma/
+        colon boundaries for low TTS latency); disable it to use the standard
+        sentence-terminal pattern for every clause.
         """
-        chunker = SentenceChunker(min_chars=min_chars)
+        chunker = SentenceChunker(
+            min_chars=min_chars,
+            early_first_chunk=early_first_chunk,
+        )
         contents = build_contents(history, prompt, self.memory_turns)
         async for token in self.stream_tokens(prompt, contents=contents):
             clauses = chunker.feed(token)

@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from itertools import pairwise
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from google.genai.errors import APIError
@@ -170,6 +170,21 @@ def test_early_first_chunk_fast_path() -> None:
     assert slow.flush() == "Hello there!"
 
 
+def test_early_first_chunk_false_uses_standard_pattern() -> None:
+    """Verify early_first_chunk=False disables the fast path: the first clause is
+    held to sentence-terminal punctuation exactly like standard mode."""
+    chunker = SentenceChunker(min_chars=20, early_first_chunk=False)
+
+    # A comma-strong first clause is not a terminal boundary in standard mode;
+    # the whole sentence emits as one chunk when the '.' lands.
+    assert chunker.feed("The quick brown fox jumps over the lazy dog, and keeps running. ") == [
+        "The quick brown fox jumps over the lazy dog, and keeps running."
+    ]
+
+    # The fast path stays disabled for subsequent clauses too.
+    assert chunker.feed("The setup is now complete. ") == ["The setup is now complete."]
+
+
 def test_flush_returns_remainder_and_resets_state() -> None:
     """Verify flush returns unemitted text and resets the chunker for the next stream."""
     chunker = SentenceChunker(min_chars=20)
@@ -280,6 +295,25 @@ async def test_stream_sentence_chunks_sends_history_contents() -> None:
     assert sent_roles == ["user", "model", "user"]
     assert sent_contents[-1]["parts"][0]["text"] == "Tell me more."
     assert len(clauses) == 1
+
+
+@pytest.mark.asyncio
+async def test_stream_sentence_chunks_forwards_early_first_chunk() -> None:
+    """Verify GeminiLLM exposes and forwards `early_first_chunk` to the chunker."""
+    mock_chunks = [MockChunk(text="Hello there!")]
+    mock_client = MagicMock()
+    mock_client.aio.models.generate_content_stream = AsyncMock(
+        return_value=async_generator(mock_chunks)
+    )
+
+    llm = GeminiLLM(api_key="mock_key", client=mock_client)
+    with patch("src.core.llm.SentenceChunker") as mock_chunker_cls:
+        mock_chunker_cls.return_value.feed.return_value = []
+        mock_chunker_cls.return_value.flush.return_value = None
+        async for _ in llm.stream_sentence_chunks("Ping", min_chars=5, early_first_chunk=False):
+            pass
+
+    mock_chunker_cls.assert_called_once_with(min_chars=5, early_first_chunk=False)
 
 
 @pytest.mark.asyncio

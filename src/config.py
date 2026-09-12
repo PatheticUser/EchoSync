@@ -133,6 +133,10 @@ class Settings(BaseSettings):
         ge=1,
         description="Minimum character length of a speech clause before the streaming chunker emits it for TTS",
     )
+    llm_chunk_early_first: bool = Field(
+        default=True,
+        description="Emit the first clause at a comma/colon/terminal boundary for low TTS latency; false enforces sentence-terminal punctuation for every chunk",
+    )
 
     # Model Parameters: LLM Generation (Gemini)
     llm_temperature: float = Field(
