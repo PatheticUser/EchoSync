@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import threading
 from unittest.mock import AsyncMock, patch
 
 import numpy as np
@@ -125,6 +126,285 @@ def test_websocket_audio_ingestion_and_turn_flow(client: TestClient) -> None:
         final_status = ws.receive_json()
         assert final_status["type"] == "status"
         assert final_status["data"]["state"] == "LISTENING"
+
+
+# ---------------------------------------------------------------------------
+# Barge-in probability gate (GAPS INTERRUPT-PROB). A SPEECH_ACTIVE frame only
+# interrupts model speech when its probability reaches VAD_INTERRUPT_PROB; frames
+# below it are ignored while the assistant is speaking, and LISTENING-state
+# utterance collection is unaffected.
+# ---------------------------------------------------------------------------
+
+
+def test_no_barge_in_below_interrupt_probability(client: TestClient) -> None:
+    """SPEECH_ACTIVE frames below VAD_INTERRUPT_PROB must NOT interrupt model speech."""
+    interrupt_prob = get_settings().vad_interrupt_prob
+    sub_threshold = max(0.0, interrupt_prob - 0.1)
+    synthetic_audio = np.zeros(16000, dtype=np.float32)
+    mock_stt_result = TranscriptionResult(
+        text="What is the weather?",
+        duration_ms=45.0,
+        audio_duration_s=1.0,
+    )
+    # Holds the mocked TTS stream open so the turn parks in "SPEAKING" while the
+    # worker is fed a controlled SPEECH_ACTIVE frame (deterministic ordering).
+    tts_gate = threading.Event()
+    barge_in_frame_seen = threading.Event()
+
+    async def mock_stream_sentence_chunks(prompt: str, **kwargs):
+        yield "The weather is sunny and warm."
+
+    async def mock_synthesize_stream(text: str):
+        # Bounded wait: if the test fails before releasing the gate, the parked
+        # executor thread still exits within 5s so pytest teardown never hangs.
+        await asyncio.to_thread(tts_gate.wait, 5.0)
+        yield b"\x00" * 2048
+        yield b"\x01" * 2048
+
+    vad_events = iter(
+        [
+            VADEvent(
+                state=VADState.SPEECH_END,
+                probability=interrupt_prob,
+                audio_buffer=synthetic_audio,
+                duration_ms=500.0,
+            ),
+            VADEvent(
+                state=VADState.SPEECH_ACTIVE,
+                probability=sub_threshold,
+                audio_buffer=None,
+                duration_ms=0.0,
+            ),
+        ]
+    )
+    frame_index = 0
+
+    async def mock_async_process_frame(frame: bytes) -> VADEvent:
+        nonlocal frame_index
+        frame_index += 1
+        if frame_index == 2:
+            barge_in_frame_seen.set()
+        return next(vad_events)
+
+    with (
+        patch(
+            "src.core.vad.SileroVAD.async_process_frame",
+            side_effect=mock_async_process_frame,
+        ),
+        patch(
+            "src.core.stt.WhisperSTT.async_transcribe",
+            new=AsyncMock(return_value=mock_stt_result),
+        ),
+        patch(
+            "src.core.llm.GeminiLLM.stream_sentence_chunks",
+            side_effect=mock_stream_sentence_chunks,
+        ),
+        patch(
+            "src.core.tts.KokoroTTS.synthesize_stream",
+            side_effect=mock_synthesize_stream,
+        ),
+        client.websocket_connect("/ws/audio") as ws,
+    ):
+        init_msg = ws.receive_json()
+        assert init_msg["data"]["state"] == "LISTENING"
+
+        # Frame 1: SPEECH_END launches the dialogue turn, which parks inside the
+        # mocked TTS stream with current_state == "SPEAKING".
+        ws.send_bytes(np.zeros(512, dtype=np.int16).tobytes())
+        assert ws.receive_json()["data"]["state"] == "PROCESSING_STT"
+        assert ws.receive_json()["type"] == "transcript"
+        assert ws.receive_json()["data"]["state"] == "STREAMING_LLM"
+        assert ws.receive_json()["data"]["state"] == "SPEAKING"
+        assert ws.receive_json()["type"] == "audio_header"
+
+        # Frame 2: sub-threshold SPEECH_ACTIVE while speaking must be ignored.
+        ws.send_bytes(np.zeros(512, dtype=np.int16).tobytes())
+        assert barge_in_frame_seen.wait(timeout=2.0), (
+            "worker never processed the sub-threshold frame"
+        )
+
+        # The turn was NOT cancelled: releasing the TTS gate lets it finish normally
+        # (audio chunks arrive before any LISTENING status).
+        tts_gate.set()
+        assert len(ws.receive_bytes()) == 2048
+        assert len(ws.receive_bytes()) == 2048
+        final_msg = ws.receive_json()
+        assert final_msg["type"] == "status"
+        assert final_msg["data"]["state"] == "LISTENING"
+
+
+def test_barge_in_fires_at_interrupt_probability(client: TestClient) -> None:
+    """SPEECH_ACTIVE at exactly VAD_INTERRUPT_PROB interrupts model speech."""
+    interrupt_prob = get_settings().vad_interrupt_prob
+    synthetic_audio = np.zeros(16000, dtype=np.float32)
+    mock_stt_result = TranscriptionResult(
+        text="What is the weather?",
+        duration_ms=45.0,
+        audio_duration_s=1.0,
+    )
+    tts_gate = threading.Event()
+    barge_in_frame_seen = threading.Event()
+
+    async def mock_stream_sentence_chunks(prompt: str, **kwargs):
+        yield "The weather is sunny and warm."
+
+    async def mock_synthesize_stream(text: str):
+        # Bounded wait: if the test fails before releasing the gate, the parked
+        # executor thread still exits within 5s so pytest teardown never hangs.
+        await asyncio.to_thread(tts_gate.wait, 5.0)
+        yield b"\x00" * 2048
+        yield b"\x01" * 2048
+
+    vad_events = iter(
+        [
+            VADEvent(
+                state=VADState.SPEECH_END,
+                probability=interrupt_prob,
+                audio_buffer=synthetic_audio,
+                duration_ms=500.0,
+            ),
+            VADEvent(
+                state=VADState.SPEECH_ACTIVE,
+                probability=interrupt_prob,
+                audio_buffer=None,
+                duration_ms=0.0,
+            ),
+        ]
+    )
+    frame_index = 0
+
+    async def mock_async_process_frame(frame: bytes) -> VADEvent:
+        nonlocal frame_index
+        frame_index += 1
+        if frame_index == 2:
+            barge_in_frame_seen.set()
+        return next(vad_events)
+
+    with (
+        patch(
+            "src.core.vad.SileroVAD.async_process_frame",
+            side_effect=mock_async_process_frame,
+        ),
+        patch(
+            "src.core.stt.WhisperSTT.async_transcribe",
+            new=AsyncMock(return_value=mock_stt_result),
+        ),
+        patch(
+            "src.core.llm.GeminiLLM.stream_sentence_chunks",
+            side_effect=mock_stream_sentence_chunks,
+        ),
+        patch(
+            "src.core.tts.KokoroTTS.synthesize_stream",
+            side_effect=mock_synthesize_stream,
+        ),
+        client.websocket_connect("/ws/audio") as ws,
+    ):
+        init_msg = ws.receive_json()
+        assert init_msg["data"]["state"] == "LISTENING"
+
+        ws.send_bytes(np.zeros(512, dtype=np.int16).tobytes())
+        assert ws.receive_json()["data"]["state"] == "PROCESSING_STT"
+        assert ws.receive_json()["type"] == "transcript"
+        assert ws.receive_json()["data"]["state"] == "STREAMING_LLM"
+        assert ws.receive_json()["data"]["state"] == "SPEAKING"
+        assert ws.receive_json()["type"] == "audio_header"
+
+        # Frame 2: SPEECH_ACTIVE at exactly the interrupt threshold must barge in.
+        ws.send_bytes(np.zeros(512, dtype=np.int16).tobytes())
+        assert barge_in_frame_seen.wait(timeout=2.0), "worker never processed the barge-in frame"
+
+        # stop_active_turn() cancels the turn; its CancelledError handler reports the
+        # interruption before the worker settles the session back to LISTENING.
+        interrupted_msg = ws.receive_json()
+        assert interrupted_msg["type"] == "status"
+        assert interrupted_msg["data"]["state"] == "LISTENING"
+        assert interrupted_msg["data"].get("interrupted") is True
+        settled_msg = ws.receive_json()
+        assert settled_msg["type"] == "status"
+        assert settled_msg["data"]["state"] == "LISTENING"
+
+        # Release the parked TTS worker thread so its executor slot is not pinned.
+        tts_gate.set()
+
+
+def test_subthreshold_speech_while_listening_still_collected(client: TestClient) -> None:
+    """A sub-threshold SPEECH_ACTIVE frame during LISTENING does not disrupt utterance flow."""
+    interrupt_prob = get_settings().vad_interrupt_prob
+    sub_threshold = max(0.0, interrupt_prob - 0.1)
+    synthetic_audio = np.zeros(16000, dtype=np.float32)
+    mock_stt_result = TranscriptionResult(
+        text="What is the weather?",
+        duration_ms=45.0,
+        audio_duration_s=1.0,
+    )
+
+    async def mock_stream_sentence_chunks(prompt: str, **kwargs):
+        yield "The weather is sunny and warm."
+
+    async def mock_synthesize_stream(text: str):
+        yield b"\x00" * 2048
+        yield b"\x01" * 2048
+
+    vad_events = iter(
+        [
+            VADEvent(
+                state=VADState.SPEECH_ACTIVE,
+                probability=sub_threshold,
+                audio_buffer=None,
+                duration_ms=0.0,
+            ),
+            VADEvent(
+                state=VADState.SPEECH_END,
+                probability=sub_threshold,
+                audio_buffer=synthetic_audio,
+                duration_ms=500.0,
+            ),
+        ]
+    )
+
+    async def mock_async_process_frame(frame: bytes) -> VADEvent:
+        return next(vad_events)
+
+    with (
+        patch(
+            "src.core.vad.SileroVAD.async_process_frame",
+            side_effect=mock_async_process_frame,
+        ),
+        patch(
+            "src.core.stt.WhisperSTT.async_transcribe",
+            new=AsyncMock(return_value=mock_stt_result),
+        ),
+        patch(
+            "src.core.llm.GeminiLLM.stream_sentence_chunks",
+            side_effect=mock_stream_sentence_chunks,
+        ),
+        patch(
+            "src.core.tts.KokoroTTS.synthesize_stream",
+            side_effect=mock_synthesize_stream,
+        ),
+        client.websocket_connect("/ws/audio") as ws,
+    ):
+        init_msg = ws.receive_json()
+        assert init_msg["data"]["state"] == "LISTENING"
+
+        # Sub-threshold SPEECH_ACTIVE frame while listening: ignored by the barge-in
+        # branch (state is LISTENING), so the session stays put.
+        ws.send_bytes(np.zeros(512, dtype=np.int16).tobytes())
+
+        # A subsequent SPEECH_END still launches the full STT -> LLM -> TTS turn,
+        # proving sub-threshold frames never suppress utterance collection.
+        ws.send_bytes(np.zeros(512, dtype=np.int16).tobytes())
+        assert ws.receive_json()["data"]["state"] == "PROCESSING_STT"
+        assert ws.receive_json()["type"] == "transcript"
+        assert ws.receive_json()["data"]["state"] == "STREAMING_LLM"
+        assert ws.receive_json()["data"]["state"] == "SPEAKING"
+        audio_header = ws.receive_json()
+        assert audio_header["type"] == "audio_header"
+        assert len(ws.receive_bytes()) == 2048
+        assert len(ws.receive_bytes()) == 2048
+        final_msg = ws.receive_json()
+        assert final_msg["type"] == "status"
+        assert final_msg["data"]["state"] == "LISTENING"
 
 
 # ---------------------------------------------------------------------------
