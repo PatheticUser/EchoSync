@@ -12,7 +12,15 @@ logging.getLogger("phonemizer").setLevel(logging.ERROR)
 
 
 class KokoroTTS:
-    """Acoustic synthesis engine producing 24kHz 16-bit PCM audio streams."""
+    """Acoustic synthesis engine producing 24kHz 16-bit PCM audio streams.
+
+    Naturalness knobs (``default_voice``, ``speed``, ``chunk_size``) fall back to
+    the defaults mirrored by the ``TTS_VOICE`` / ``TTS_SPEED`` / ``TTS_CHUNK_SIZE``
+    settings in :mod:`src.config`; ``src.main.lifespan`` overrides them from the
+    settings at startup. Kokoro voices e.g. ``af_sarah``, ``af_bella``,
+    ``am_michael``, ``bm_george``. Speed 1.0 is natural; 0.9-1.1 is typical;
+    higher speeds can produce audible clicks.
+    """
 
     def __init__(
         self,

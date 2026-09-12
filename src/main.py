@@ -65,6 +65,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     tts = KokoroTTS(
         model_path=settings.kokoro_model_path,
         voices_path=settings.kokoro_voices_path,
+        default_voice=settings.tts_voice,
+        speed=settings.tts_speed,
+        chunk_size=settings.tts_chunk_size,
     )
     tts.warmup()
     app.state.tts = tts
