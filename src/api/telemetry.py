@@ -12,6 +12,13 @@ import psutil
 # Initialize root logger with JSON stream formatting
 logger = logging.getLogger("echosync.pipeline")
 
+# Prometheus instrumentation stays optional so structured JSON telemetry keeps
+# working even if the metrics dependency is unavailable at runtime.
+try:
+    from src.api.metrics import record_turn_metrics
+except ImportError:  # pragma: no cover - optional dependency fallback
+    record_turn_metrics = None
+
 
 @dataclass(slots=True)
 class PipelineMetrics:
@@ -66,3 +73,11 @@ def log_turn_telemetry(
     log_line = json.dumps(payload)
     sys.stdout.write(log_line + "\n")
     sys.stdout.flush()
+
+    if record_turn_metrics is not None:
+        record_turn_metrics(
+            metrics.stt_ms,
+            metrics.llm_ttft_ms,
+            metrics.tts_first_chunk_ms,
+            metrics.total_rtt_ms,
+        )
