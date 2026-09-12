@@ -16,10 +16,16 @@ from tenacity import (
     wait_random_exponential,
 )
 
+from src.config import get_settings
+
 DEFAULT_VOICE_SYSTEM_PROMPT = (
     "You are EchoSync, an ultra-low-latency conversational voice AI. "
-    "Respond immediately, concisely, and naturally in 1-2 spoken sentences. "
-    "Strictly never output Markdown syntax, asterisks, headers, code blocks, or bullet lists."
+    "Respond in 1-3 complete, grammatically correct spoken sentences. "
+    "Never omit words, never use fragments, never trail off. "
+    "Never use fillers or hesitation sounds. "
+    "Never use markdown, lists, headers, or bullets. "
+    "Direct, concise, natural — like a sharp colleague, not a robot. "
+    "If you don't know, say so plainly in one sentence."
 )
 
 
@@ -156,6 +162,7 @@ class GeminiLLM:
 
     async def _call_stream_with_retry(self, contents: list[dict[str, Any]]) -> Any:
         """Execute generate_content_stream with Tenacity AsyncRetrying backoff."""
+        settings = get_settings()
         retrying = AsyncRetrying(
             retry=retry_if_exception(is_retryable_llm_error),
             wait=wait_random_exponential(min=0.5, max=6.0, multiplier=2.0),
@@ -165,13 +172,17 @@ class GeminiLLM:
 
         async for attempt in retrying:
             with attempt:
+                # T1.4: generation params are env-driven via Settings. Note that
+                # max_output_tokens=150 may truncate verbose replies -> clipped TTS
+                # tail; raise the default if truncation is observed.
                 config = types.GenerateContentConfig(
                     system_instruction=self.system_prompt,
-                    temperature=0.3,
-                    max_output_tokens=150,
+                    temperature=settings.llm_temperature,
+                    top_p=settings.llm_top_p,
+                    max_output_tokens=settings.llm_max_output_tokens,
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
                 )
-                async with asyncio.timeout(5.0):
+                async with asyncio.timeout(settings.llm_timeout_s):
                     return await self._client.aio.models.generate_content_stream(
                         model=self.model_name,
                         contents=contents,

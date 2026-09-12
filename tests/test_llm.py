@@ -3,6 +3,7 @@
 import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -10,6 +11,7 @@ import pytest
 from google.genai.errors import APIError
 
 from src.core.llm import (
+    DEFAULT_VOICE_SYSTEM_PROMPT,
     GeminiLLM,
     SentenceChunker,
     build_contents,
@@ -323,6 +325,41 @@ def test_is_retryable_llm_error() -> None:
     assert is_retryable_llm_error(APIError(503, {"error": {"message": "Service unavailable"}}))
     assert not is_retryable_llm_error(APIError(400, {"error": {"message": "Bad request"}}))
     assert not is_retryable_llm_error(ValueError("Invalid argument"))
+
+
+def test_default_voice_system_prompt_is_non_empty() -> None:
+    """Verify the voice system prompt is defined and encodes the T1.5 constraints."""
+    prompt = DEFAULT_VOICE_SYSTEM_PROMPT
+    assert isinstance(prompt, str)
+    assert prompt.strip()
+    assert "1-3 complete" in prompt
+    assert "Never omit words" in prompt
+    assert "Never use fillers" in prompt
+    assert "never trail off" in prompt
+    assert "markdown" in prompt
+    assert "like a sharp colleague" in prompt
+    assert "say so plainly" in prompt
+
+
+def test_build_contents_alternation_invariant() -> None:
+    """Verify model-closed histories yield strictly alternating user/model roles
+    that open and close on a user message (the Gemini contents contract)."""
+    well_formed: list[list[tuple[str, str]] | None] = [
+        None,
+        [("user", "Where is the Eiffel Tower?"), ("model", "It is in Paris.")],
+        [
+            ("user", "What is the capital of France?"),
+            ("model", "Paris."),
+            ("user", "Is it on the Seine?"),
+            ("model", "Yes, it is."),
+        ],
+    ]
+    for history in well_formed:
+        contents = build_contents(history, "Tell me more.", max_turns=8)
+        roles = [c["role"] for c in contents]
+        assert roles[0] == "user"
+        assert roles[-1] == "user"
+        assert all(prev != cur for prev, cur in pairwise(roles))
 
 
 @pytest.mark.asyncio
