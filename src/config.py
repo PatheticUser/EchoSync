@@ -111,6 +111,13 @@ class Settings(BaseSettings):
         description="Number of prior user/assistant turn pairs retained as LLM conversation memory",
     )
 
+    # Streaming Chunking
+    llm_chunk_min_chars: int = Field(
+        default=20,
+        ge=1,
+        description="Minimum character length of a speech clause before the streaming chunker emits it for TTS",
+    )
+
     # Local Model Cache Paths
     model_cache_dir: Path = Field(
         default=Path("./models"),

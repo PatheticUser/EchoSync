@@ -205,7 +205,9 @@ async def websocket_audio_endpoint(websocket: WebSocket) -> None:
             assistant_text_parts: list[str] = []
 
             async for clause in session.llm.stream_sentence_chunks(
-                transcript, history=list(session.memory)
+                transcript,
+                history=list(session.memory),
+                min_chars=settings.llm_chunk_min_chars,
             ):
                 if first_clause:
                     metrics.llm_ttft_ms = (time.perf_counter() - llm_t0) * 1000.0

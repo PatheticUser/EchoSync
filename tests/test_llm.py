@@ -94,6 +94,92 @@ def test_sentence_chunker_empty_and_flush() -> None:
     assert chunker.flush() == "This text has no punctuation yet"
 
 
+def test_sentence_chunker_splits_on_terminal_punctuation() -> None:
+    """Verify standard mode splits at sentence-terminal punctuation (. ! ?)."""
+    chunker = SentenceChunker(min_chars=20)
+
+    emitted: list[str] = []
+    for token in [
+        "The system is fully operational. ",
+        "It handles callbacks without latency. ",
+        "Are there any pending alerts? ",
+        "No issues!",
+    ]:
+        emitted.extend(chunker.feed(token))
+
+    final = chunker.flush()
+    if final:
+        emitted.append(final)
+
+    assert emitted == [
+        "The system is fully operational.",
+        "It handles callbacks without latency.",
+        "Are there any pending alerts?",
+        "No issues!",
+    ]
+
+
+def test_comma_does_not_split_when_clause_under_min_chars() -> None:
+    """Verify a comma never ejects a short clause as its own TTS boundary."""
+    chunker = SentenceChunker(min_chars=20)
+
+    emitted: list[str] = []
+    for token in [
+        "We are live now. ",
+        "A short phrase, continues onward. ",
+    ]:
+        emitted.extend(chunker.feed(token))
+
+    # The comma clause ("A short phrase,") is under min_chars and must not
+    # surface as its own TTS chunk; it is emitted with the full sentence.
+    assert emitted == [
+        "We are live now.",
+        "A short phrase, continues onward.",
+    ]
+
+
+def test_comma_splits_long_first_clause_when_terminal_follows() -> None:
+    """Verify the first-chunk fast path keeps comma as a boundary for a long
+    clause while a sentence-terminal follows; standard mode folds the comma."""
+    chunker = SentenceChunker(min_chars=20)
+
+    emitted = chunker.feed("The quick brown fox jumps over the lazy dog, and keeps running. ")
+    assert emitted == ["The quick brown fox jumps over the lazy dog,"]
+    assert chunker.flush() == "and keeps running."
+
+    # After the first chunk, standard mode emits the comma clause folded into
+    # the full sentence delivered at the terminal punctuation.
+    chunker = SentenceChunker(min_chars=20)
+    assert chunker.feed("Setup complete. ") == ["Setup complete."]
+    assert chunker.feed("The quick brown fox jumps over the lazy dog, and keeps running. ") == [
+        "The quick brown fox jumps over the lazy dog, and keeps running."
+    ]
+
+
+def test_early_first_chunk_fast_path() -> None:
+    """Verify the fast path emits a short first clause and respects disabling it."""
+    # Fast path enabled (default): a short first clause still emits promptly.
+    fast = SentenceChunker(min_chars=20)
+    assert fast.feed("Hello there! ") == ["Hello there!"]
+
+    # Fast path disabled: the same short clause is held until flush.
+    slow = SentenceChunker(min_chars=20, early_first_chunk=False)
+    assert slow.feed("Hello there! ") == []
+    assert slow.flush() == "Hello there!"
+
+
+def test_flush_returns_remainder_and_resets_state() -> None:
+    """Verify flush returns unemitted text and resets the chunker for the next stream."""
+    chunker = SentenceChunker(min_chars=20)
+
+    assert chunker.feed("Turn complete. The next statement is still running") == ["Turn complete."]
+    assert chunker.flush() == "The next statement is still running"
+
+    # Fully reset: an empty flush is a no-op and the next clause emits promptly.
+    assert chunker.flush() is None
+    assert chunker.feed("Another turn. ") == ["Another turn."]
+
+
 @pytest.mark.asyncio
 async def test_gemini_llm_stream_sentence_chunks_mocked() -> None:
     """Verify GeminiLLM stream_sentence_chunks yields cleanly parsed clauses from stream."""
