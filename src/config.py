@@ -119,6 +119,17 @@ class Settings(BaseSettings):
         ge=0,
         description="Number of pre-speech frames retained as padding before detected speech (96ms at 32ms/frame)",
     )
+    # Barge-in probability gate (GAPS INTERRUPT-PROB): a SPEECH_ACTIVE frame seen while
+    # the assistant is speaking only interrupts (barge-in) when its VAD probability reaches
+    # this threshold; fainter background noise below it is ignored so model speech continues.
+    # Tuning guidance: raise toward 0.95 to make barge-in harder to trigger (fewer false
+    # cutoffs from ambient noise), lower toward 0.05 to make interruptions more responsive.
+    vad_interrupt_prob: float = Field(
+        default=0.5,
+        ge=0.05,
+        le=0.95,
+        description="Minimum VAD speech probability that triggers barge-in during model speech",
+    )
 
     # Conversation Memory
     llm_memory_turns: int = Field(

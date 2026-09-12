@@ -428,8 +428,13 @@ async def websocket_audio_endpoint(websocket: WebSocket) -> None:
                 )
 
             if vad_event.state == VADState.SPEECH_ACTIVE:
-                # If user speaks while system is speaking, trigger barge-in cutoff
-                if session.current_state in ("SPEAKING", "STREAMING_LLM"):
+                # Barge-in during model speech is probability-gated: only a confident speech
+                # frame (>= vad_interrupt_prob) cuts the assistant off, so faint background
+                # noise below the threshold is ignored and the model turn continues.
+                if (
+                    session.current_state in ("SPEAKING", "STREAMING_LLM")
+                    and vad_event.probability >= settings.vad_interrupt_prob
+                ):
                     await session.stop_active_turn()
                     await session.send_status("LISTENING")
 
