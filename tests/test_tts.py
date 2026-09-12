@@ -6,7 +6,9 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
 
+from src.config import Settings
 from src.core.tts import KokoroTTS
 
 MODEL_PATH = Path("models/tts/kokoro-v0_19.onnx")
@@ -45,6 +47,29 @@ def test_tts_fallback_mode() -> None:
     pcm = fallback_engine._synthesize_pcm("Testing fallback mode.")
     assert len(pcm) > 0
     assert len(pcm) % 2 == 0
+
+
+def test_tts_stores_configured_knobs() -> None:
+    """Verify constructor stores configured naturalness knobs (voice/speed/chunk)."""
+    engine = KokoroTTS(
+        model_path=Path("non_existent.onnx"),
+        voices_path=Path("non_existent.bin"),
+        default_voice="af_bella",
+        speed=0.9,
+        chunk_size=1024,
+    )
+    assert engine.default_voice == "af_bella"
+    assert engine.speed == 0.9
+    assert engine.chunk_size == 1024
+
+    # Defaults fall back to current hardcoded values when not supplied
+    default_engine = KokoroTTS(
+        model_path=Path("non_existent.onnx"),
+        voices_path=Path("non_existent.bin"),
+    )
+    assert default_engine.default_voice == "af_sarah"
+    assert default_engine.speed == 1.0
+    assert default_engine.chunk_size == 2048
 
 
 @pytest.mark.asyncio
@@ -132,3 +157,36 @@ async def test_tts_latency_benchmark(tts: KokoroTTS) -> None:
     assert chunk_count > 0
     # Log benchmark metric
     print(f"\nTTS first chunk latency for 'Hi.': {first_chunk_ms:.1f}ms")
+
+
+def test_tts_config_defaults_load_without_env() -> None:
+    """Verify TTS naturalness knob settings fall back to defaults without env."""
+    settings = Settings(gemini_api_key="test_dummy_key", _env_file=None)
+
+    assert settings.tts_voice == "af_sarah"
+    assert settings.tts_speed == 1.0
+    assert settings.tts_chunk_size == 2048
+
+
+def test_tts_config_env_overrides_respected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify TTS_VOICE/TTS_SPEED/TTS_CHUNK_SIZE env vars override defaults."""
+    monkeypatch.setenv("GEMINI_API_KEY", "test_key")
+    monkeypatch.setenv("TTS_VOICE", "bm_george")
+    monkeypatch.setenv("TTS_SPEED", "0.85")
+    monkeypatch.setenv("TTS_CHUNK_SIZE", "1024")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.tts_voice == "bm_george"
+    assert settings.tts_speed == 0.85
+    assert settings.tts_chunk_size == 1024
+
+
+def test_tts_config_invalid_ranges_raise_validation_error() -> None:
+    """Verify TTS_SPEED/TTS_CHUNK_SIZE boundary constraints are enforced."""
+    with pytest.raises(ValidationError):
+        Settings(gemini_api_key="test_key", tts_speed=0.4, _env_file=None)
+    with pytest.raises(ValidationError):
+        Settings(gemini_api_key="test_key", tts_speed=2.5, _env_file=None)
+    with pytest.raises(ValidationError):
+        Settings(gemini_api_key="test_key", tts_chunk_size=128, _env_file=None)

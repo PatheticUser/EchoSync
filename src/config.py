@@ -158,6 +158,26 @@ class Settings(BaseSettings):
         description="Per-attempt timeout in seconds for a Gemini streaming request",
     )
 
+    # Model Parameters: TTS (Kokoro-82M ONNX) — Naturalness Knobs
+    # Voice list e.g. af_sarah, af_bella, am_michael, bm_george.
+    # Speed 1.0 is the natural default; 0.9-1.1 is typical for conversational
+    # pacing; higher values can produce audible clicks.
+    tts_voice: str = Field(
+        default="af_sarah",
+        description="Default Kokoro voice identifier used when no per-utterance voice is requested",
+    )
+    tts_speed: float = Field(
+        default=1.0,
+        ge=0.5,
+        le=2.0,
+        description="Kokoro speech rate multiplier (1.0 natural; 0.9-1.1 typical)",
+    )
+    tts_chunk_size: int = Field(
+        default=2048,
+        ge=256,
+        description="Byte size of TTS audio chunks streamed to the client",
+    )
+
     # Local Model Cache Paths
     model_cache_dir: Path = Field(
         default=Path("./models"),
