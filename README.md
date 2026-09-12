@@ -39,7 +39,7 @@ EchoSync isolates raw acoustic capture, voice activity detection, and speech-to-
 |  |      - Triggers Speech End on >= 400ms sustained silence          |  |
 |  |                                                                   |  |
 |  |   2. faster-whisper Engine (CTranslate2 Backend)                  |  |
-|  |      - Quantized INT8 tiny.en model running greedy decoding       |  |
+|  |      - Quantized INT8 base.en model running greedy decoding     |  |
 |  |      - Emits verified text transcript to event bus                |  |
 |  +───────────────────────────────────┬───────────────────────────────+  |
 |                                      │ (TLS Text Only)                  |
@@ -70,7 +70,7 @@ EchoSync isolates raw acoustic capture, voice activity detection, and speech-to-
 | Subsystem | Target SLA | Measured Local (CPU) |
 |---|---|---|
 | **VAD Silence Detection** | 400 ms | 400 ms |
-| **STT Transcription (Whisper INT8)** | $\le$ 250 ms | 70 - 150 ms |
+| **STT Transcription (Whisper INT8)** | $\le$ 250 ms | 100 - 200 ms |
 | **LLM Time-to-First-Token (TTFT)** | $\le$ 300 ms | 180 - 280 ms |
 | **TTS First Chunk Generation** | $\le$ 150 ms | 90 - 140 ms |
 | **Total Round-Trip Time (RTT)** | $\le$ 1,200 ms | 750 - 980 ms |
@@ -144,7 +144,7 @@ models/
 ├── vad/
 │   └── silero_vad.onnx
 ├── stt/
-│   └── models--Systran--faster-whisper-tiny.en/
+│   └── models--Systran--faster-whisper-base.en/
 └── tts/
     ├── kokoro-v0_19.onnx
     └── voices.bin

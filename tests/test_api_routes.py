@@ -38,11 +38,14 @@ def test_static_workbench_routes(client: TestClient) -> None:
     assert root_res.status_code == 200
     assert "text/html" in root_res.headers.get("content-type", "")
     assert "EchoSync" in root_res.text
-    assert "audio-processor.js" in root_res.text
+    assert "Try Now" in root_res.text
+    assert "audio-processor.js" not in root_res.text
 
     app_res = client.get("/app")
     assert app_res.status_code == 200
     assert "text/html" in app_res.headers.get("content-type", "")
+    assert "audio-processor.js" in app_res.text
+    assert "waveformCanvas" in app_res.text
 
 
 def test_audio_processor_asset_served(client: TestClient) -> None:

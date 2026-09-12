@@ -38,7 +38,7 @@ def test_defaults_populated_correctly() -> None:
     # Model parameters
     import os
 
-    assert settings.whisper_model_name == "tiny.en"
+    assert settings.whisper_model_name == "base.en"
     assert settings.whisper_compute_type == "int8"
     assert settings.whisper_cpu_threads == min(4, os.cpu_count() or 2)
     assert settings.vad_threshold == 0.35

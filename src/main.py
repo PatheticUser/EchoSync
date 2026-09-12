@@ -81,10 +81,14 @@ def create_app() -> FastAPI:
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     @app.get("/", include_in_schema=False)
-    @app.get("/app", include_in_schema=False)
-    async def index() -> FileResponse:
-        """Serve web client workbench."""
+    async def landing() -> FileResponse:
+        """Serve marketing landing page."""
         return FileResponse(static_dir / "index.html")
+
+    @app.get("/app", include_in_schema=False)
+    async def app_index() -> FileResponse:
+        """Serve interactive voice console workbench."""
+        return FileResponse(static_dir / "app.html")
 
     @app.get("/healthz", tags=["Probes"])
     async def healthz() -> dict[str, str]:

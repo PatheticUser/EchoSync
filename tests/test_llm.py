@@ -73,11 +73,13 @@ def test_sentence_chunker_deterministic() -> None:
     if final:
         emitted.append(final)
 
-    assert len(emitted) == 3
-    # "Hello there!" (12 chars < 20) merges with "How are you doing today?"
-    assert emitted[0] == "Hello there! How are you doing today?"
-    assert emitted[1] == "I am fine, thank you."
-    assert emitted[2] == "Goodbye!"
+    assert len(emitted) == 4
+    # First chunk emits early once min 12 chars (low TTS latency), even though
+    # min_chars=20 governs all subsequent boundaries.
+    assert emitted[0] == "Hello there!"
+    assert emitted[1] == "How are you doing today?"
+    assert emitted[2] == "I am fine, thank you."
+    assert emitted[3] == "Goodbye!"
 
 
 def test_sentence_chunker_empty_and_flush() -> None:

@@ -6,7 +6,7 @@ raises so Docker builds abort instead of shipping a broken model cache.
 
 Sources:
     VAD      : snakers4/silero-vad          (silero_vad.onnx, ~2.3 MB)
-    Whisper  : Systran/faster-whisper-tiny.en via faster-whisper HF cache
+    Whisper  : Systran/faster-whisper-base.en via faster-whisper HF cache
     TTS      : thewh1teagle/kokoro-onnx GitHub release `model-files`
                (kokoro-v0_19.onnx, voices.bin)
 """
@@ -70,22 +70,22 @@ def download(url: str, dest: Path, min_bytes: int) -> None:
 def warm_whisper() -> None:
     """Prime the CTranslate2 faster-whisper model cache under models/stt."""
     cache_file = MODELS_DIR / "stt" / "CACHEDIR.TAG"
-    if (MODELS_DIR / "stt" / "models--Systran--faster-whisper-tiny.en").is_dir():
-        print("[skip] faster-whisper tiny.en already cached under models/stt")
+    if (MODELS_DIR / "stt" / "models--Systran--faster-whisper-base.en").is_dir():
+        print("[skip] faster-whisper base.en already cached under models/stt")
         return
 
-    print("[get ] faster-whisper tiny.en (HuggingFace cache)")
+    print("[get ] faster-whisper base.en (HuggingFace cache)")
     from faster_whisper import WhisperModel
 
     WhisperModel(
-        model_size_or_path="tiny.en",
+        model_size_or_path="base.en",
         device="cpu",
         compute_type="int8",
         download_root=str(MODELS_DIR / "stt"),
     )
     cache_file.parent.mkdir(parents=True, exist_ok=True)
     cache_file.write_text("Signature: 8a477f597d28d172789f06886806bc550635d4d2\n")
-    print("[done] faster-whisper tiny.en cached")
+    print("[done] faster-whisper base.en cached")
 
 
 def main() -> int:

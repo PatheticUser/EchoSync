@@ -25,7 +25,7 @@ class WhisperSTT:
 
     def __init__(
         self,
-        model_name: str = "tiny.en",
+        model_name: str = "base.en",
         compute_type: str = "int8",
         cpu_threads: int = 4,
         download_root: Path | str = "./models/stt",

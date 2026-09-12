@@ -70,7 +70,7 @@ class Settings(BaseSettings):
 
     # Model Parameters: STT (faster-whisper / CTranslate2)
     whisper_model_name: str = Field(
-        default="tiny.en",
+        default="base.en",
         description="Faster-whisper model identifier",
     )
     whisper_compute_type: str = Field(

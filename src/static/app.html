@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EchoSync Console — Voice Agent Workbench</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-0: #05070d;
+      --bg-1: #080b14;
+      --bg-2: #0c1120;
+      --card: rgba(13, 18, 32, 0.82);
+      --card-solid: #0d1220;
+      --border: rgba(148, 163, 184, 0.14);
+      --border-strong: rgba(148, 163, 184, 0.3);
+      --text-0: #edf3fb;
+      --text-1: #aab9d0;
+      --text-2: #67788f;
+      --cyan: #22d3ee;
+      --cyan-strong: #0ea5b7;
+      --cyan-soft: rgba(34, 211, 238, 0.13);
+      --violet: #8b5cf6;
+      --violet-soft: rgba(139, 92, 246, 0.13);
+      --green: #34d399;
+      --green-soft: rgba(52, 211, 153, 0.13);
+      --amber: #fbbf24;
+      --amber-soft: rgba(251, 191, 36, 0.13);
+      --red: #f87171;
+      --red-soft: rgba(248, 113, 113, 0.13);
+      --grad-signal: linear-gradient(100deg, #22d3ee 0%, #38bdf8 45%, #8b5cf6 100%);
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      --font-display: 'Space Grotesk', 'Inter', sans-serif;
+      --font-body: 'Inter', -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --osc-grid: rgba(148, 163, 184, 0.07);
+    }
+    html.light {
+      --bg-0: #f4f7fc;
+      --bg-1: #eef2f9;
+      --bg-2: #e6ecf6;
+      --card: rgba(255, 255, 255, 0.9);
+      --card-solid: #ffffff;
+      --border: rgba(15, 23, 42, 0.1);
+      --border-strong: rgba(15, 23, 42, 0.22);
+      --text-0: #0b1526;
+      --text-1: #3d4c63;
+      --text-2: #6b7c96;
+      --cyan: #0891b2;
+      --cyan-strong: #06708a;
+      --cyan-soft: rgba(8, 145, 178, 0.1);
+      --violet: #6d28d9;
+      --violet-soft: rgba(109, 40, 217, 0.09);
+      --green: #059669;
+      --green-soft: rgba(5, 150, 105, 0.11);
+      --amber: #b45309;
+      --amber-soft: rgba(180, 83, 9, 0.1);
+      --red: #dc2626;
+      --red-soft: rgba(220, 38, 38, 0.09);
+      --osc-grid: rgba(15, 23, 42, 0.07);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-0); color: var(--text-0);
+      font-family: var(--font-body); font-size: 14px; line-height: 1.5;
+      min-height: 100vh; display: flex; flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+      transition: background 0.35s var(--ease-out), color 0.35s var(--ease-out);
+    }
+    ::selection { background: var(--cyan); color: #04131c; }
+
+    /* backdrop */
+    .scene { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+    .orb { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.32; animation: orbFloat 20s ease-in-out infinite; }
+    html.light .orb { opacity: 0.24; }
+    .orb-c { width: 520px; height: 520px; background: radial-gradient(circle, rgba(34, 211, 238, 0.33), transparent 70%); top: -200px; left: -120px; }
+    .orb-v { width: 500px; height: 500px; background: radial-gradient(circle, rgba(139, 92, 246, 0.3), transparent 70%); bottom: -220px; right: -140px; animation-delay: -8s; }
+    @keyframes orbFloat { 0%, 100% { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(30px, 24px, 0) scale(1.06); } }
+
+    /* header */
+    header.app-header {
+      padding: 16px 28px; display: flex; justify-content: space-between; align-items: center; gap: 18px; flex-wrap: wrap;
+      border-bottom: 1px solid var(--border);
+      background: var(--card); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      position: sticky; top: 0; z-index: 50;
+    }
+    .brand-group { display: flex; align-items: center; gap: 13px; }
+    .brand-mark { width: 38px; height: 38px; border-radius: 11px; background: var(--grad-signal); display: grid; place-items: center; box-shadow: 0 0 22px rgba(34, 211, 238, 0.35); }
+    .brand-mark svg { width: 22px; height: 22px; color: #04131c; }
+    .brand-title { font-family: var(--font-display); font-weight: 700; font-size: 19px; letter-spacing: -0.01em; line-height: 1.1; }
+    .brand-subtitle { font-family: var(--font-mono); font-size: 10px; color: var(--text-2); letter-spacing: 0.08em; text-transform: uppercase; }
+    .header-actions { display: flex; align-items: center; gap: 18px; }
+    .header-status {
+      display: inline-flex; align-items: center; gap: 9px;
+      font-family: var(--font-mono); font-size: 11px; color: var(--text-1);
+      padding: 7px 13px; border-radius: 999px; background: var(--bg-2); border: 1px solid var(--border);
+    }
+    .header-status .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-2); transition: all 0.25s; }
+    .header-status .status-dot.active { background: var(--green); box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.18), 0 0 14px rgba(52, 211, 153, 0.6); }
+    .theme-toggle {
+      width: 54px; height: 28px; border-radius: 999px; border: 1px solid var(--border-strong);
+      background: var(--bg-2); position: relative; padding: 3px; cursor: pointer; transition: border-color 0.2s;
+    }
+    .theme-toggle:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+    .theme-thumb { width: 20px; height: 20px; border-radius: 50%; background: var(--grad-signal); display: block; transform: translateX(0); transition: transform 0.28s var(--ease-out); box-shadow: 0 0 8px rgba(34,211,238,0.5); }
+    html.light .theme-thumb { transform: translateX(26px); }
+    .home-link { font-family: var(--font-mono); font-size: 12px; color: var(--text-1); text-decoration: none; border: 1px solid var(--border); padding: 8px 14px; border-radius: 999px; display: inline-flex; align-items: center; gap: 7px; transition: all 0.2s var(--ease-out); background: var(--bg-2); }
+    .home-link:hover { border-color: var(--cyan); color: var(--cyan); transform: translateY(-1px); }
+    .home-link svg { width: 15px; height: 15px; }
+
+    /* layout */
+    main { flex: 1; max-width: 1140px; width: 100%; margin: 0 auto; padding: 26px 28px 110px; display: flex; flex-direction: column; gap: 20px; }
+    .top-panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 860px) { .top-panel-grid { grid-template-columns: 1fr; } }
+
+    .panel-card {
+      background: var(--card); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 22px;
+      display: flex; flex-direction: column; gap: 16px;
+      box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.5);
+      transition: border-color 0.25s;
+    }
+    html.light .panel-card { box-shadow: 0 18px 44px -22px rgba(15, 23, 42, 0.18); }
+    .panel-card:hover { border-color: var(--border-strong); }
+    .panel-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+    .panel-title { font-family: var(--font-display); font-weight: 600; font-size: 15px; letter-spacing: -0.01em; display: flex; align-items: center; gap: 9px; }
+    .panel-title .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--grad-signal); box-shadow: 0 0 8px var(--cyan); }
+    .panel-tag { font-family: var(--font-mono); font-size: 10px; color: var(--text-2); letter-spacing: 0.05em; text-transform: uppercase; }
+
+    /* oscilloscope */
+    .oscilloscope-well { display: flex; flex-direction: column; gap: 14px; }
+    .canvas-wrapper { position: relative; width: 100%; height: 100px; border-radius: var(--radius-sm); overflow: hidden; background: var(--bg-1); border: 1px solid var(--border); }
+    canvas#waveformCanvas { width: 100%; height: 100%; display: block; }
+    .oscilloscope-overlay { position: absolute; top: 10px; right: 12px; }
+    .vad-indicator-tag {
+      font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 4px 10px; border-radius: 999px; color: var(--text-2); background: var(--bg-2); border: 1px solid var(--border);
+      display: inline-flex; align-items: center; gap: 7px; transition: all 0.2s;
+    }
+    .vad-indicator-tag::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--text-2); }
+    .vad-indicator-tag.active { color: var(--cyan); border-color: rgba(34, 211, 238, 0.45); background: var(--cyan-soft); }
+    .vad-indicator-tag.active::before { background: var(--cyan); box-shadow: 0 0 10px var(--cyan); animation: blinkDot 1s step-end infinite; }
+    @keyframes blinkDot { 50% { opacity: 0.25; } }
+
+    /* VU meter */
+    .vu-section { display: flex; flex-direction: column; gap: 7px; }
+    .vu-header { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10px; color: var(--text-2); letter-spacing: 0.05em; text-transform: uppercase; }
+    .vu-header span:last-child { color: var(--text-1); }
+    .vu-meter-bar-container { position: relative; height: 18px; background: var(--bg-1); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; padding: 3px; display: flex; align-items: stretch; }
+    .vu-segments-track { position: relative; flex: 1; height: 100%; display: flex; gap: 2px; }
+    .vu-segment { flex: 1; background: rgba(148, 163, 184, 0.09); border-radius: 2px; transition: background 0.06s ease; }
+    .vu-segment.lit-normal { background: var(--cyan); box-shadow: 0 0 6px rgba(34, 211, 238, 0.5); }
+    .vu-segment.lit-warm { background: var(--amber); box-shadow: 0 0 6px rgba(251, 191, 36, 0.5); }
+    .vu-segment.lit-clip { background: var(--red); box-shadow: 0 0 6px rgba(248, 113, 113, 0.5); }
+    .vu-peak-hold-needle { position: absolute; top: 3px; bottom: 3px; width: 2px; border-radius: 2px; background: var(--text-0); left: 0; transition: left 0.06s linear; pointer-events: none; opacity: 0.85; }
+    .vu-scale-ticks { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 9px; color: var(--text-2); padding: 0 4px; }
+
+    /* telemetry table */
+    .telemetry-table-wrap { border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); background: var(--bg-1); }
+    .telemetry-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 11.5px; }
+    .telemetry-table th { text-align: left; font-size: 9px; font-weight: 500; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.08em; padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--bg-2); }
+    .telemetry-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text-1); }
+    .telemetry-table tr:last-child td { border-bottom: none; }
+    .metric-name { color: var(--text-2); }
+    .metric-num { font-weight: 600; color: var(--text-0); }
+    .sla-pill { display: inline-block; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding: 3px 8px; border-radius: 999px; }
+    .sla-pill.optimal { background: var(--green-soft); color: var(--green); border: 1px solid rgba(52, 211, 153, 0.35); }
+    .sla-pill.nominal { background: var(--cyan-soft); color: var(--cyan); border: 1px solid rgba(34, 211, 238, 0.35); }
+    .sla-pill.lag { background: var(--amber-soft); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.35); }
+    .sla-pill.breach { background: var(--red-soft); color: var(--red); border: 1px solid rgba(248, 113, 113, 0.4); }
+    .telemetry-rtt-summary { display: flex; justify-content: space-between; align-items: center; padding: 11px 12px; background: var(--bg-2); border-top: 1px solid var(--border); font-family: var(--font-mono); font-size: 11.5px; }
+    .telemetry-rtt-summary .metric-name { color: var(--text-2); }
+
+    /* transcript */
+    .transcript-card {
+      background: var(--card); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 22px;
+      display: flex; flex-direction: column; gap: 16px; min-height: 340px;
+      box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.5);
+    }
+    html.light .transcript-card { box-shadow: 0 18px 44px -22px rgba(15, 23, 42, 0.16); }
+    .transcript-scroll { flex: 1; overflow-y: auto; max-height: 420px; display: flex; flex-direction: column; gap: 14px; padding-right: 6px; }
+    .transcript-scroll::-webkit-scrollbar { width: 5px; }
+    .transcript-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
+
+    .message-entry { display: flex; flex-direction: column; gap: 7px; padding: 13px 16px; border-radius: 16px; animation: msgIn 0.35s var(--ease-out) both; }
+    @keyframes msgIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .message-entry.user {
+      align-self: flex-end; max-width: 84%; border-radius: 18px 18px 4px 18px;
+      background: linear-gradient(135deg, rgba(34, 211, 238, 0.14), rgba(56, 189, 248, 0.1));
+      border: 1px solid rgba(34, 211, 238, 0.3);
+    }
+    .message-entry.assistant {
+      align-self: flex-start; max-width: 88%; border-radius: 18px 18px 18px 4px;
+      background: var(--bg-2); border: 1px solid var(--border); border-left: 3px solid var(--violet);
+    }
+    .message-entry.interrupted { border-left-color: var(--red) !important; }
+    .message-meta { display: flex; justify-content: space-between; align-items: center; font-family: var(--font-mono); font-size: 10px; color: var(--text-2); }
+    .meta-left { display: flex; align-items: center; gap: 8px; }
+    .sender-role { font-weight: 600; letter-spacing: 0.07em; display: inline-flex; align-items: center; gap: 6px; }
+    .sender-role::before { content: ''; width: 7px; height: 7px; border-radius: 50%; }
+    .message-entry.user .sender-role { color: var(--cyan); }
+    .message-entry.user .sender-role::before { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+    .message-entry.assistant .sender-role { color: var(--violet); }
+    .message-entry.assistant .sender-role::before { background: var(--violet); box-shadow: 0 0 8px var(--violet); }
+    .interrupted-badge { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 7px; border-radius: 999px; background: var(--red-soft); border: 1px solid rgba(248, 113, 113, 0.4); color: var(--red); }
+    .equalizer-badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; background: var(--violet-soft); border: 1px solid rgba(139, 92, 246, 0.35); font-size: 9px; font-family: var(--font-mono); color: var(--violet); }
+    .equalizer-bars { display: inline-flex; align-items: flex-end; height: 11px; gap: 2px; }
+    .equalizer-bar { width: 2px; background: var(--violet); border-radius: 1px; animation: eqBounce 0.8s ease-in-out infinite alternate; }
+    .equalizer-bar:nth-child(1) { height: 4px; animation-delay: 0.1s; }
+    .equalizer-bar:nth-child(2) { height: 9px; animation-delay: 0.3s; }
+    .equalizer-bar:nth-child(3) { height: 6px; animation-delay: 0.2s; }
+    .equalizer-bar:nth-child(4) { height: 8px; animation-delay: 0.4s; }
+    @keyframes eqBounce { 0% { height: 3px; } 100% { height: 11px; } }
+    .message-content { color: var(--text-0); font-size: 14px; line-height: 1.58; letter-spacing: -0.002em; }
+    .empty-prompt { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; height: 200px; color: var(--text-2); font-size: 13px; text-align: center; }
+    .empty-prompt .wave-glyph { display: inline-flex; align-items: flex-end; gap: 3px; height: 22px; }
+    .empty-prompt .wave-glyph span { width: 3px; background: var(--border-strong); border-radius: 2px; animation: emptyWaves 1.4s ease-in-out infinite alternate; }
+    .empty-prompt .wave-glyph span:nth-child(1) { height: 8px; } .empty-prompt .wave-glyph span:nth-child(2) { height: 18px; animation-delay: 0.15s; } .empty-prompt .wave-glyph span:nth-child(3) { height: 12px; animation-delay: 0.3s; } .empty-prompt .wave-glyph span:nth-child(4) { height: 20px; animation-delay: 0.45s; } .empty-prompt .wave-glyph span:nth-child(5) { height: 10px; animation-delay: 0.6s; }
+    @keyframes emptyWaves { to { transform: scaleY(0.4); opacity: 0.4; } }
+
+    /* dock */
+    .control-dock {
+      position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60;
+      max-width: 760px; width: calc(100% - 40px);
+      background: var(--card-solid); border: 1px solid var(--border-strong); border-radius: 999px;
+      padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      box-shadow: 0 24px 60px -16px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(34, 211, 238, 0.06) inset;
+      backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    }
+    html.light .control-dock { box-shadow: 0 24px 60px -20px rgba(15, 23, 42, 0.3); }
+    .control-actions { display: flex; align-items: center; gap: 12px; }
+    button { font-family: var(--font-body); font-size: 13px; font-weight: 600; cursor: pointer; }
+
+    .btn-mic-wrap { position: relative; }
+    .btn-mic {
+      position: relative; z-index: 2;
+      width: 54px; height: 54px; border-radius: 50%; border: 1px solid var(--border-strong);
+      background: var(--bg-2); color: var(--cyan);
+      display: grid; place-items: center; transition: all 0.25s var(--ease-out);
+    }
+    .btn-mic svg { width: 24px; height: 24px; }
+    .btn-mic:hover:not(:disabled) { border-color: var(--cyan); box-shadow: 0 0 20px var(--cyan-soft); transform: translateY(-2px); }
+    .btn-mic:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+    .btn-mic.active { background: var(--grad-signal); border-color: transparent; color: #04131c; box-shadow: 0 0 26px rgba(34, 211, 238, 0.5); }
+    .btn-mic.active::after {
+      content: ''; position: absolute; inset: -1px; border-radius: 50%;
+      border: 2px solid rgba(34, 211, 238, 0.6); animation: micPulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    .btn-mic.active::before {
+      content: ''; position: absolute; inset: -10px; border-radius: 50%;
+      border: 1px solid rgba(139, 92, 246, 0.35); animation: micPulse 1.8s 0.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes micPulse { 0% { transform: scale(1); opacity: 0.9; } 100% { transform: scale(1.35); opacity: 0; } }
+
+    .mic-action { display: flex; flex-direction: column; line-height: 1.2; text-align: left; }
+    .mic-action .main { font-size: 13px; font-weight: 600; color: var(--text-0); }
+    .mic-action .sub { font-family: var(--font-mono); font-size: 10px; color: var(--text-2); }
+
+    .btn-interrupt {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 9px 16px; border-radius: 999px; border: 1px solid var(--border);
+      background: transparent; color: var(--text-1); font-size: 12px; font-weight: 500;
+      transition: all 0.2s var(--ease-out);
+    }
+    .btn-interrupt:hover:not(:disabled) { border-color: var(--red); color: var(--red); background: var(--red-soft); }
+    .btn-interrupt:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-interrupt:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    .btn-interrupt svg { width: 15px; height: 15px; }
+
+    .dock-status-group { display: flex; align-items: center; gap: 16px; }
+    .pipeline-status-badge {
+      font-family: var(--font-mono); font-size: 10px; font-weight: 600; padding: 5px 11px; border-radius: 999px;
+      background: var(--bg-2); border: 1px solid var(--border); color: var(--text-2); text-transform: uppercase; letter-spacing: 0.07em;
+      transition: all 0.2s;
+    }
+    .pipeline-status-badge.listening { color: var(--cyan); border-color: rgba(34, 211, 238, 0.45); background: var(--cyan-soft); }
+    .pipeline-status-badge.speaking { color: var(--green); border-color: rgba(52, 211, 153, 0.45); background: var(--green-soft); }
+    .pipeline-status-badge.processing { color: var(--amber); border-color: rgba(251, 191, 36, 0.45); background: var(--amber-soft); }
+    .latency-ping-badge { font-family: var(--font-mono); font-size: 11px; color: var(--text-2); display: flex; align-items: center; gap: 7px; }
+    .ping-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-2); transition: all 0.25s; }
+    .ping-dot.connected { background: var(--green); box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.14), 0 0 12px rgba(52, 211, 153, 0.6); }
+
+    footer { border-top: 1px solid var(--border); padding: 14px 28px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-2); font-family: var(--font-mono); background: var(--card); }
+    footer a { color: var(--cyan); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.001s !important; animation-iteration-count: 1 !important; transition-duration: 0.001s !important; }
+      .btn-mic.active::before, .btn-mic.active::after { animation: none; }
+      .orb { animation: none; }
+      .message-entry { animation: none; }
+    }
+    @media (max-width: 620px) {
+      .latency-ping-badge { display: none; }
+      .dock-status-group .pipeline-status-badge { display: none; }
+      .mic-action .sub { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="scene" aria-hidden="true">
+    <div class="orb orb-c"></div>
+    <div class="orb orb-v"></div>
+  </div>
+
+  <header class="app-header">
+    <div class="brand-group">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l2-5 3 10 3-8 2 3h7"/></svg>
+      </span>
+      <div>
+        <div class="brand-title">EchoSync</div>
+        <div class="brand-subtitle">Voice Agent Console</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <a class="home-link" href="/" aria-label="Back to landing page">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        Home
+      </a>
+      <button id="themeToggleBtn" class="theme-toggle" aria-label="Toggle theme">
+        <span class="theme-thumb" id="themeThumb"></span>
+      </button>
+      <div class="header-status">
+        <span class="status-dot" id="connectionDot"></span>
+        <span id="connectionLabel">OFFLINE</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="top-panel-grid">
+      <!-- Acoustic Input -->
+      <div class="panel-card">
+        <div class="panel-header">
+          <h2 class="panel-title"><span class="dot"></span>Acoustic Input</h2>
+          <span class="panel-tag">16 kHz / 512-sample PCM</span>
+        </div>
+        <div class="oscilloscope-well">
+          <div class="canvas-wrapper">
+            <canvas id="waveformCanvas" width="480" height="96"></canvas>
+            <div class="oscilloscope-overlay">
+              <span class="vad-indicator-tag" id="vadStatusTag">VAD Silence</span>
+            </div>
+          </div>
+          <div class="vu-section">
+            <div class="vu-header">
+              <span>Calibrated Input Level</span>
+              <span id="amplitudeValueLabel">-60.0 dB</span>
+            </div>
+            <div class="vu-meter-bar-container">
+              <div class="vu-segments-track" id="vuSegmentsTrack"></div>
+              <div class="vu-peak-hold-needle" id="vuPeakNeedle"></div>
+            </div>
+            <div class="vu-scale-ticks">
+              <span>-60 dB</span><span>-36 dB</span><span>-18 dB</span><span>-6 dB</span><span>0 dB</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Turn Telemetry -->
+      <div class="panel-card">
+        <div class="panel-header">
+          <h2 class="panel-title"><span class="dot"></span>Turn Telemetry</h2>
+          <span class="panel-tag">Subsystem SLA Monitor</span>
+        </div>
+        <div class="telemetry-table-wrap">
+          <table class="telemetry-table">
+            <thead>
+              <tr><th>Subsystem Metric</th><th>Observed</th><th>Target</th><th>Health</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="metric-name">VAD Silence Window</td>
+                <td><span class="metric-num" id="hudVadSilence">0.0</span> ms</td>
+                <td>400 ms</td>
+                <td><span class="sla-pill nominal" id="slaVad">Standby</span></td>
+              </tr>
+              <tr>
+                <td class="metric-name">STT Latency (Whisper)</td>
+                <td><span class="metric-num" id="hudStt">0.0</span> ms</td>
+                <td>&le; 250 ms</td>
+                <td><span class="sla-pill nominal" id="slaStt">Standby</span></td>
+              </tr>
+              <tr>
+                <td class="metric-name">LLM TTFT (Gemini Flash)</td>
+                <td><span class="metric-num" id="hudLlm">0.0</span> ms</td>
+                <td>&le; 300 ms</td>
+                <td><span class="sla-pill nominal" id="slaLlm">Standby</span></td>
+              </tr>
+              <tr>
+                <td class="metric-name">TTS 1st Chunk (Kokoro)</td>
+                <td><span class="metric-num" id="hudTts">0.0</span> ms</td>
+                <td>&le; 150 ms</td>
+                <td><span class="sla-pill nominal" id="slaTts">Standby</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="telemetry-rtt-summary">
+            <span class="metric-name">Total Round-Trip Time (RTT)</span>
+            <div>
+              <span class="metric-num" id="hudTotalRtt">0.0</span> ms
+              <span class="sla-pill nominal" style="margin-left: 8px;" id="slaTotalRtt">Standby</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dialogue -->
+    <section class="transcript-card">
+      <div class="panel-header">
+        <h2 class="panel-title"><span class="dot"></span>Dialogue Stream</h2>
+        <span class="panel-tag" id="turnCountTag">Turn 0</span>
+      </div>
+      <div class="transcript-scroll" id="transcriptContainer">
+        <div class="empty-prompt" id="emptyPrompt">
+          <span class="wave-glyph" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>
+          Press the mic to start a session, then speak. Live transcription and synthesized voice output will stream here.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Control Dock -->
+  <section class="control-dock" aria-label="Session controls">
+    <div class="control-actions">
+      <div class="btn-mic-wrap">
+        <button id="toggleMicBtn" class="btn-mic" aria-label="Start or stop session">
+          <svg id="micIconOn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 19v3"/></svg>
+        </button>
+      </div>
+      <div class="mic-action">
+        <span class="main" id="micActionText">Start Session</span>
+        <span class="sub">mic &rarr; VAD &rarr; STT &rarr; LLM &rarr; TTS</span>
+      </div>
+    </div>
+    <div class="control-actions">
+      <button id="interruptBtn" class="btn-interrupt" disabled>
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
+        Interrupt
+      </button>
+    </div>
+    <div class="dock-status-group">
+      <span class="pipeline-status-badge" id="pipelineStateBadge">IDLE</span>
+      <div class="latency-ping-badge">
+        <span class="ping-dot" id="pingDot"></span>
+        <span id="pingLabel">Offline</span>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>EchoSync Edge/Cloud Hybrid Architecture</span>
+    <span>16 kHz inbound PCM / 24 kHz outbound PCM &middot; <a href="/">Back to home</a></span>
+  </footer>
+
+  <script>
+    (function () {
+      // Theme Architecture (Light / Dark Mode)
+      const htmlElement = document.documentElement;
+      const themeToggleBtn = document.getElementById("themeToggleBtn");
+      const themeLabel = null;
+      const themeThumb = document.getElementById("themeThumb");
+
+      function applyTheme(theme) {
+        if (theme === "dark") {
+          htmlElement.classList.remove("light");
+        } else {
+          htmlElement.classList.add("light");
+        }
+        localStorage.setItem("echosync_theme", theme);
+      }
+
+      const savedTheme = localStorage.getItem("echosync_theme") ||
+        (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      applyTheme(savedTheme);
+
+      themeToggleBtn.addEventListener("click", () => {
+        const currentTheme = htmlElement.classList.contains("light") ? "light" : "dark";
+        applyTheme(currentTheme === "dark" ? "light" : "dark");
+      });
+
+      // DOM References
+      const toggleMicBtn = document.getElementById("toggleMicBtn");
+      const micActionText = document.getElementById("micActionText");
+      const interruptBtn = document.getElementById("interruptBtn");
+      const connectionDot = document.getElementById("connectionDot");
+      const connectionLabel = document.getElementById("connectionLabel");
+      const pingDot = document.getElementById("pingDot");
+      const pingLabel = document.getElementById("pingLabel");
+      const pipelineStateBadge = document.getElementById("pipelineStateBadge");
+      const waveformCanvas = document.getElementById("waveformCanvas");
+      const canvasCtx = waveformCanvas.getContext("2d");
+      const vadStatusTag = document.getElementById("vadStatusTag");
+      const amplitudeValueLabel = document.getElementById("amplitudeValueLabel");
+      const vuSegmentsTrack = document.getElementById("vuSegmentsTrack");
+      const vuPeakNeedle = document.getElementById("vuPeakNeedle");
+      const transcriptContainer = document.getElementById("transcriptContainer");
+      const emptyPrompt = document.getElementById("emptyPrompt");
+      const turnCountTag = document.getElementById("turnCountTag");
+
+      // HUD & SLA Elements
+      const hudVadSilence = document.getElementById("hudVadSilence");
+      const hudStt = document.getElementById("hudStt");
+      const hudLlm = document.getElementById("hudLlm");
+      const hudTts = document.getElementById("hudTts");
+      const hudTotalRtt = document.getElementById("hudTotalRtt");
+      const slaVad = document.getElementById("slaVad");
+      const slaStt = document.getElementById("slaStt");
+      const slaLlm = document.getElementById("slaLlm");
+      const slaTts = document.getElementById("slaTts");
+      const slaTotalRtt = document.getElementById("slaTotalRtt");
+
+      // Audio & Pipeline State
+      let isSessionActive = false;
+      let websocket = null;
+      let audioInputContext = null;
+      let mediaStream = null;
+      let audioWorkletNode = null;
+      let playbackAudioContext = null;
+      let nextPlaybackTime = 0.0;
+      let activePlaybackSources = [];
+      let turnCounter = 0;
+      let activeAssistantEntry = null;
+      let activeAssistantContent = null;
+      let activeEqualizerBadge = null;
+
+      // VU Meter & Peak Hold State
+      const NUM_VU_SEGMENTS = 24;
+      const vuSegments = [];
+      for (let i = 0; i < NUM_VU_SEGMENTS; i++) {
+        const seg = document.createElement("div");
+        seg.className = "vu-segment";
+        vuSegmentsTrack.appendChild(seg);
+        vuSegments.push(seg);
+      }
+      let peakHoldPercent = 0.0;
+      let peakHoldDecay = 0.0;
+
+      // Oscilloscope Data Buffer (512 samples)
+      let currentFrameData = new Int16Array(512);
+
+      // 60 FPS Oscilloscope Waveform Visualizer
+      function renderOscilloscope() {
+        requestAnimationFrame(renderOscilloscope);
+
+        const width = waveformCanvas.width;
+        const height = waveformCanvas.height;
+        const isLight = htmlElement.classList.contains("light");
+        const model = { c1: "#22d3ee", c2: "#38bdf8", c3: "#8b5cf6" };
+        const activeC = isLight ? ["#0891b2", "#2563eb", "#6d28d9"] : [model.c1, model.c2, model.c3];
+        const bg = isLight ? "#eef2f9" : "#080b14";
+        const grid = isLight ? "rgba(15,23,42,0.07)" : "rgba(148,163,184,0.07)";
+
+        canvasCtx.fillStyle = bg;
+        canvasCtx.fillRect(0, 0, width, height);
+
+        // Draw background grid lines
+        canvasCtx.strokeStyle = grid;
+        canvasCtx.lineWidth = 1;
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(0, height / 2);
+        canvasCtx.lineTo(width, height / 2);
+        canvasCtx.moveTo(0, height * 0.25);
+        canvasCtx.lineTo(width, height * 0.25);
+        canvasCtx.moveTo(0, height * 0.75);
+        canvasCtx.lineTo(width, height * 0.75);
+        canvasCtx.stroke();
+
+        if (!isSessionActive) {
+          // idle breathing signal
+          drawIdle(width, height, grid, activeC[0], activeC[2]);
+          return;
+        }
+
+        const grad = canvasCtx.createLinearGradient(0, 0, width, 0);
+        grad.addColorStop(0, activeC[0]);
+        grad.addColorStop(0.6, activeC[1]);
+        grad.addColorStop(1, activeC[2]);
+
+        canvasCtx.strokeStyle = grad;
+        canvasCtx.lineWidth = 2.0;
+        canvasCtx.shadowColor = activeC[0];
+        canvasCtx.shadowBlur = 6;
+
+        canvasCtx.beginPath();
+        const points = [];
+        for (let i = 0; i < currentFrameData.length; i += 4) {
+          const norm = currentFrameData[i] / 32768.0;
+          const x = (i / (currentFrameData.length - 1)) * width;
+          const y = (height / 2) - (norm * (height / 2) * 0.88);
+          points.push({ x, y });
+        }
+
+        if (points.length > 0) {
+          canvasCtx.moveTo(points[0].x, points[0].y);
+          for (let i = 0; i < points.length - 1; i++) {
+            const xc = (points[i].x + points[i + 1].x) / 2;
+            const yc = (points[i].y + points[i + 1].y) / 2;
+            canvasCtx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+          }
+          const last = points[points.length - 1];
+          canvasCtx.lineTo(last.x, last.y);
+          canvasCtx.stroke();
+        }
+
+        canvasCtx.shadowBlur = 0;
+      }
+
+      let idlePhase = 0;
+      function drawIdle(width, height, grid, c1, c2) {
+        idlePhase += 0.05;
+        const grad = canvasCtx.createLinearGradient(0, 0, width, 0);
+        grad.addColorStop(0, c1);
+        grad.addColorStop(1, c2);
+        canvasCtx.strokeStyle = grad;
+        canvasCtx.globalAlpha = 0.55;
+        canvasCtx.lineWidth = 1.5;
+        canvasCtx.beginPath();
+        for (let x = 0; x < width; x += 2) {
+          const p = x / width;
+          const v = Math.sin(p * 10 + idlePhase) * 0.6 + Math.sin(p * 23 + idlePhase * 1.7) * 0.4;
+          const y = height / 2 + v * (height * 0.14);
+          if (x === 0) canvasCtx.moveTo(x, y); else canvasCtx.lineTo(x, y);
+        }
+        canvasCtx.stroke();
+        canvasCtx.globalAlpha = 1;
+      }
+
+      renderOscilloscope();
+
+      // Segmented VU Meter & Peak Hold Calculator
+      function updateAcousticMeter(int16Array) {
+        let sumSquares = 0;
+        for (let i = 0; i < int16Array.length; i++) {
+          const norm = int16Array[i] / 32768.0;
+          sumSquares += norm * norm;
+        }
+        const rms = Math.sqrt(sumSquares / int16Array.length);
+
+        const db = rms > 0.00001 ? Math.max(-60, 20 * Math.log10(rms)) : -60;
+        amplitudeValueLabel.textContent = db.toFixed(1) + " dB";
+
+        const percent = Math.min(100, Math.max(0, ((db + 60) / 60) * 100));
+        const activeSegments = Math.round((percent / 100) * NUM_VU_SEGMENTS);
+
+        for (let i = 0; i < NUM_VU_SEGMENTS; i++) {
+          const seg = vuSegments[i];
+          seg.className = "vu-segment";
+          if (i < activeSegments) {
+            if (i >= NUM_VU_SEGMENTS - 2) {
+              seg.classList.add("lit-clip");
+            } else if (i >= NUM_VU_SEGMENTS - 6) {
+              seg.classList.add("lit-warm");
+            } else {
+              seg.classList.add("lit-normal");
+            }
+          }
+        }
+
+        if (percent >= peakHoldPercent) {
+          peakHoldPercent = percent;
+          peakHoldDecay = 0;
+        } else {
+          peakHoldDecay += 0.08;
+          peakHoldPercent = Math.max(0, peakHoldPercent - peakHoldDecay);
+        }
+        vuPeakNeedle.style.left = Math.min(99, peakHoldPercent) + "%";
+      }
+
+      // Stop Audio Playback immediately (Barge-in handling)
+      function flushPlaybackQueue() {
+        for (let i = 0; i < activePlaybackSources.length; i++) {
+          try {
+            activePlaybackSources[i].stop();
+          } catch (e) {}
+        }
+        activePlaybackSources = [];
+        if (playbackAudioContext) {
+          nextPlaybackTime = playbackAudioContext.currentTime;
+        }
+        removeEqualizerBadge();
+      }
+
+      // Live Equalizer Badge Management
+      function attachEqualizerBadge(entry) {
+        removeEqualizerBadge();
+        const metaRight = entry.querySelector(".meta-right");
+        if (!metaRight) return;
+
+        const badge = document.createElement("span");
+        badge.className = "equalizer-badge";
+        badge.innerHTML = `
+          <div class="equalizer-bars">
+            <span class="equalizer-bar"></span>
+            <span class="equalizer-bar"></span>
+            <span class="equalizer-bar"></span>
+            <span class="equalizer-bar"></span>
+          </div>
+          <span>Streaming Audio</span>
+        `;
+        metaRight.appendChild(badge);
+        activeEqualizerBadge = badge;
+      }
+
+      function removeEqualizerBadge() {
+        if (activeEqualizerBadge && activeEqualizerBadge.parentElement) {
+          activeEqualizerBadge.remove();
+        }
+        activeEqualizerBadge = null;
+      }
+
+      // Play incoming 24kHz 16-bit PCM chunk
+      function enqueuePcmChunk(arrayBuffer) {
+        if (!playbackAudioContext) {
+          playbackAudioContext = new (window.AudioContext || window.webkitAudioContext)({
+            sampleRate: 24000
+          });
+        }
+        if (playbackAudioContext.state === "suspended") {
+          playbackAudioContext.resume();
+        }
+
+        const int16 = new Int16Array(arrayBuffer);
+        const float32 = new Float32Array(int16.length);
+        for (let i = 0; i < int16.length; i++) {
+          float32[i] = int16[i] / (int16[i] < 0 ? 32768 : 32767);
+        }
+
+        const audioBuffer = playbackAudioContext.createBuffer(1, float32.length, 24000);
+        audioBuffer.copyToChannel(float32, 0);
+
+        const source = playbackAudioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(playbackAudioContext.destination);
+
+        const currentTime = playbackAudioContext.currentTime;
+        const startTime = Math.max(currentTime, nextPlaybackTime);
+        source.start(startTime);
+        nextPlaybackTime = startTime + audioBuffer.duration;
+
+        activePlaybackSources.push(source);
+        source.onended = () => {
+          const index = activePlaybackSources.indexOf(source);
+          if (index !== -1) {
+            activePlaybackSources.splice(index, 1);
+          }
+          if (activePlaybackSources.length === 0) {
+            removeEqualizerBadge();
+          }
+        };
+      }
+
+      // Append Dialogue Transcript Message
+      function appendTranscript(role, text, extraClass = "") {
+        if (emptyPrompt) {
+          emptyPrompt.style.display = "none";
+        }
+
+        const entry = document.createElement("div");
+        entry.className = "message-entry " + role + (extraClass ? " " + extraClass : "");
+
+        const meta = document.createElement("div");
+        meta.className = "message-meta";
+
+        const metaLeft = document.createElement("div");
+        metaLeft.className = "meta-left";
+
+        const roleSpan = document.createElement("span");
+        roleSpan.className = "sender-role";
+        roleSpan.textContent = role === "user" ? "YOU" : "ECHOSYNC";
+        metaLeft.appendChild(roleSpan);
+
+        if (extraClass === "interrupted") {
+          const badge = document.createElement("span");
+          badge.className = "interrupted-badge";
+          badge.textContent = "[Interrupted by user]";
+          metaLeft.appendChild(badge);
+        }
+
+        const metaRight = document.createElement("div");
+        metaRight.className = "meta-right";
+
+        meta.appendChild(metaLeft);
+        meta.appendChild(metaRight);
+
+        const content = document.createElement("div");
+        content.className = "message-content";
+        content.textContent = text;
+
+        entry.appendChild(meta);
+        entry.appendChild(content);
+
+        transcriptContainer.appendChild(entry);
+        transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+
+        if (role === "assistant") {
+          attachEqualizerBadge(entry);
+          activeAssistantEntry = entry;
+          activeAssistantContent = content;
+        }
+
+        return content;
+      }
+
+      // SLA Status Pill Helper
+      function setSlaStatus(element, valueMs, optimalMax, nominalMax) {
+        if (!element) return;
+        element.className = "sla-pill";
+        if (valueMs <= 0.0) {
+          element.textContent = "Standby";
+          element.classList.add("nominal");
+        } else if (valueMs <= optimalMax) {
+          element.textContent = "Optimal";
+          element.classList.add("optimal");
+        } else if (valueMs <= nominalMax) {
+          element.textContent = "Nominal";
+          element.classList.add("nominal");
+        } else if (valueMs <= nominalMax * 1.5) {
+          element.textContent = "Lag";
+          element.classList.add("lag");
+        } else {
+          element.textContent = "Breach";
+          element.classList.add("breach");
+        }
+      }
+
+      // Update Pipeline Status UI
+      function setPipelineState(state) {
+        pipelineStateBadge.textContent = state;
+        pipelineStateBadge.className = "pipeline-status-badge";
+
+        if (state === "SPEAKING") {
+          pipelineStateBadge.classList.add("speaking");
+        } else if (state === "LISTENING") {
+          pipelineStateBadge.classList.add("listening");
+          removeEqualizerBadge();
+        } else if (state === "PROCESSING_STT" || state === "STREAMING_LLM") {
+          pipelineStateBadge.classList.add("processing");
+        }
+      }
+
+      // Update High-Density Telemetry HUD
+      function updateTelemetryHUD(metrics) {
+        if (!metrics) return;
+        if (metrics.vad_silence_ms !== undefined) {
+          hudVadSilence.textContent = metrics.vad_silence_ms.toFixed(1);
+          setSlaStatus(slaVad, metrics.vad_silence_ms, 400, 600);
+        }
+        if (metrics.stt_ms !== undefined) {
+          hudStt.textContent = metrics.stt_ms.toFixed(1);
+          setSlaStatus(slaStt, metrics.stt_ms, 250, 500);
+        }
+        if (metrics.llm_ttft_ms !== undefined) {
+          hudLlm.textContent = metrics.llm_ttft_ms.toFixed(1);
+          setSlaStatus(slaLlm, metrics.llm_ttft_ms, 300, 600);
+        }
+        if (metrics.tts_first_chunk_ms !== undefined) {
+          hudTts.textContent = metrics.tts_first_chunk_ms.toFixed(1);
+          setSlaStatus(slaTts, metrics.tts_first_chunk_ms, 150, 400);
+        }
+        if (metrics.total_rtt_ms !== undefined) {
+          hudTotalRtt.textContent = metrics.total_rtt_ms.toFixed(1);
+          setSlaStatus(slaTotalRtt, metrics.total_rtt_ms, 800, 1500);
+        }
+      }
+
+      // Start Ingestion Session
+      async function startSession() {
+        try {
+          connectionLabel.textContent = "CONNECTING...";
+          pingLabel.textContent = "Connecting";
+          const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+          const wsUrl = protocol + "//" + window.location.host + "/ws/audio";
+          websocket = new WebSocket(wsUrl);
+          websocket.binaryType = "arraybuffer";
+
+          websocket.onopen = async () => {
+            connectionDot.classList.add("active");
+            connectionLabel.textContent = "CONNECTED";
+            pingDot.classList.add("connected");
+            pingLabel.textContent = "Connected <1ms";
+
+            interruptBtn.disabled = false;
+            toggleMicBtn.classList.add("active");
+            micActionText.textContent = "Stop Session";
+
+            audioInputContext = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioInputContext.state === "suspended") {
+              await audioInputContext.resume();
+            }
+
+            await audioInputContext.audioWorklet.addModule("/static/audio-processor.js");
+
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                channelCount: 1
+              }
+            });
+
+            const sourceNode = audioInputContext.createMediaStreamSource(mediaStream);
+            audioWorkletNode = new AudioWorkletNode(audioInputContext, "audio-processor");
+
+            audioWorkletNode.port.onmessage = (event) => {
+              if (websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send(event.data);
+                const chunk = new Int16Array(event.data);
+                currentFrameData = chunk;
+                updateAcousticMeter(chunk);
+              }
+            };
+
+            sourceNode.connect(audioWorkletNode);
+            const muteGain = audioInputContext.createGain();
+            muteGain.gain.value = 0.0;
+            audioWorkletNode.connect(muteGain);
+            muteGain.connect(audioInputContext.destination);
+            isSessionActive = true;
+          };
+
+          websocket.onmessage = (event) => {
+            if (typeof event.data === "string") {
+              try {
+                const message = JSON.parse(event.data);
+                if (message.type === "status") {
+                  const state = message.data.state;
+                  setPipelineState(state);
+
+                  if (state === "PROCESSING_STT" || state === "STREAMING_LLM" || state === "SPEAKING") {
+                    vadStatusTag.textContent = "Speech Active";
+                    vadStatusTag.classList.add("active");
+                  } else {
+                    vadStatusTag.textContent = "VAD Silence";
+                    vadStatusTag.classList.remove("active");
+                  }
+
+                  if (message.data.interrupted) {
+                    flushPlaybackQueue();
+                    if (activeAssistantEntry) {
+                      activeAssistantEntry.classList.add("interrupted");
+                      const metaLeft = activeAssistantEntry.querySelector(".meta-left");
+                      if (metaLeft && !metaLeft.querySelector(".interrupted-badge")) {
+                        const badge = document.createElement("span");
+                        badge.className = "interrupted-badge";
+                        badge.textContent = "[Interrupted by user]";
+                        metaLeft.appendChild(badge);
+                      }
+                      removeEqualizerBadge();
+                      activeAssistantEntry = null;
+                      activeAssistantContent = null;
+                    }
+                  }
+
+                  if (message.data.metrics) {
+                    updateTelemetryHUD(message.data.metrics);
+                  }
+
+                  if (state === "LISTENING") {
+                    activeAssistantEntry = null;
+                    activeAssistantContent = null;
+                  }
+                } else if (message.type === "transcript") {
+                  turnCounter++;
+                  turnCountTag.textContent = "Turn " + turnCounter;
+                  appendTranscript("user", message.data.text);
+                  activeAssistantEntry = null;
+                  activeAssistantContent = null;
+                } else if (message.type === "audio_header") {
+                  const clause = message.data.text_segment;
+                  if (!activeAssistantContent) {
+                    appendTranscript("assistant", clause);
+                  } else {
+                    activeAssistantContent.textContent += " " + clause;
+                    transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+                  }
+                }
+              } catch (err) {
+                console.error("Error parsing message JSON:", err);
+              }
+            } else if (event.data instanceof ArrayBuffer) {
+              enqueuePcmChunk(event.data);
+            }
+          };
+
+          websocket.onerror = (err) => {
+            console.error("WebSocket error:", err);
+            stopSession();
+          };
+
+          websocket.onclose = () => {
+            stopSession();
+          };
+        } catch (error) {
+          console.error("Failed to start session:", error);
+          stopSession();
+          alert("Microphone access failed: " + error.message);
+        }
+      }
+
+      // Stop Session & Clean Up
+      function stopSession() {
+        isSessionActive = false;
+        flushPlaybackQueue();
+
+        if (mediaStream) {
+          mediaStream.getTracks().forEach((track) => track.stop());
+          mediaStream = null;
+        }
+        if (audioWorkletNode) {
+          audioWorkletNode.disconnect();
+          audioWorkletNode = null;
+        }
+        if (audioInputContext) {
+          audioInputContext.close();
+          audioInputContext = null;
+        }
+        if (websocket) {
+          if (websocket.readyState === WebSocket.OPEN || websocket.readyState === WebSocket.CONNECTING) {
+            websocket.close();
+          }
+          websocket = null;
+        }
+
+        connectionDot.classList.remove("active");
+        connectionLabel.textContent = "OFFLINE";
+        pingDot.classList.remove("connected");
+        pingLabel.textContent = "Offline";
+
+        setPipelineState("IDLE");
+        vadStatusTag.textContent = "VAD Silence";
+        vadStatusTag.classList.remove("active");
+
+        interruptBtn.disabled = true;
+        toggleMicBtn.classList.remove("active");
+        micActionText.textContent = "Start Session";
+
+        currentFrameData = new Int16Array(512);
+        for (let i = 0; i < NUM_VU_SEGMENTS; i++) {
+          vuSegments[i].className = "vu-segment";
+        }
+        vuPeakNeedle.style.left = "0%";
+        amplitudeValueLabel.textContent = "-60.0 dB";
+      }
+
+      // User Interrupt Action
+      function sendInterrupt() {
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+          websocket.send(JSON.stringify({ type: "user_interrupt" }));
+        }
+        flushPlaybackQueue();
+        setPipelineState("LISTENING");
+        if (activeAssistantEntry) {
+          activeAssistantEntry.classList.add("interrupted");
+          const metaLeft = activeAssistantEntry.querySelector(".meta-left");
+          if (metaLeft && !metaLeft.querySelector(".interrupted-badge")) {
+            const badge = document.createElement("span");
+            badge.className = "interrupted-badge";
+            badge.textContent = "[Interrupted by user]";
+            metaLeft.appendChild(badge);
+          }
+          removeEqualizerBadge();
+          activeAssistantEntry = null;
+          activeAssistantContent = null;
+        }
+      }
+
+      // Event Listeners
+      toggleMicBtn.addEventListener("click", () => {
+        if (isSessionActive) {
+          stopSession();
+        } else {
+          startSession();
+        }
+      });
+
+      interruptBtn.addEventListener("click", sendInterrupt);
+    })();
+  </script>
+</body>
+</html>
