@@ -92,6 +92,11 @@ class Settings(BaseSettings):
         return int(v)
 
     # Model Parameters: VAD (Silero-VAD ONNX)
+    # Tuning guidance: keep the silence window (vad_silence_ms) in the 400-1000ms range.
+    # Shorter than the speaker's natural mid-sentence pause clips trailing words,
+    # truncating transcripts; much longer delays the end-of-turn before the assistant replies.
+    # vad_min_speech_ms rejects coughs/clicks shorter than the cutoff; vad_pre_padding_frames
+    # retains the first ~96ms (3 frames @32ms) of pre-speech context so onset is never lost.
     vad_threshold: float = Field(
         default=0.35,
         ge=0.0,
@@ -102,6 +107,16 @@ class Settings(BaseSettings):
         default=400,
         ge=50,
         description="Sustained silence duration in milliseconds to trigger utterance boundary",
+    )
+    vad_min_speech_ms: int = Field(
+        default=250,
+        ge=50,
+        description="Minimum contiguous speech duration in milliseconds to accept as a valid utterance",
+    )
+    vad_pre_padding_frames: int = Field(
+        default=3,
+        ge=0,
+        description="Number of pre-speech frames retained as padding before detected speech (96ms at 32ms/frame)",
     )
 
     # Conversation Memory

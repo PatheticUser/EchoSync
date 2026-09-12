@@ -41,6 +41,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         frame_size=settings.frame_size,
         threshold=settings.vad_threshold,
         silence_ms=settings.vad_silence_ms,
+        min_speech_ms=settings.vad_min_speech_ms,
+        pre_speech_padding_frames=settings.vad_pre_padding_frames,
     )
     app.state.vad = vad
 

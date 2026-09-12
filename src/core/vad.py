@@ -52,7 +52,10 @@ class SileroVAD:
         self.min_speech_ms = min_speech_ms
         self.pre_speech_padding_frames = pre_speech_padding_frames
 
-        # Frame duration in milliseconds (32ms for 512 samples at 16kHz)
+        # Frame duration in milliseconds (32ms for 512 samples at 16kHz).
+        # Tuning guidance: keep silence_ms in the 400-1000ms range — shorter than the
+        # speaker's natural pause clips trailing words (truncated transcripts); much
+        # longer delays SPEECH_END and thus end-of-turn latency.
         self.frame_duration_ms = (self.frame_size / self.sample_rate) * 1000.0
         self.silence_threshold_frames = max(
             1, int(np.ceil(self.silence_ms / self.frame_duration_ms))

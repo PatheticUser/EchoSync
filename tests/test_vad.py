@@ -158,6 +158,56 @@ def test_vad_state_machine_rejects_transient_noise(vad: SileroVAD) -> None:
     assert vad._current_state == VADState.SILENCE
 
 
+def test_vad_silence_threshold_frames_math() -> None:
+    """Verify silence_ms converts to frames via ceil at 32ms/frame.
+
+    Covers the tuning window 400-1000ms; 600ms -> ceil(600/32) = 19 frames.
+    """
+    cases = {400: 13, 600: 19, 800: 25, 1000: 32}
+    for silence_ms, expected_frames in cases.items():
+        vad = SileroVAD(
+            model_path=MODEL_PATH,
+            sample_rate=16000,
+            frame_size=512,
+            threshold=0.5,
+            silence_ms=silence_ms,
+        )
+        assert vad.silence_threshold_frames == expected_frames
+
+
+def test_vad_min_speech_frames_math() -> None:
+    """Verify min_speech_ms converts to frames via ceil at 32ms/frame."""
+    cases = {250: 8, 400: 13, 600: 19}
+    for min_speech_ms, expected_frames in cases.items():
+        vad = SileroVAD(
+            model_path=MODEL_PATH,
+            sample_rate=16000,
+            frame_size=512,
+            threshold=0.5,
+            min_speech_ms=min_speech_ms,
+        )
+        assert vad.min_speech_frames == expected_frames
+
+
+def test_vad_constructor_accepts_tuning_overrides() -> None:
+    """Verify non-default VAD tuning knobs are accepted as constructor overrides."""
+    vad = SileroVAD(
+        model_path=MODEL_PATH,
+        sample_rate=16000,
+        frame_size=512,
+        threshold=0.5,
+        silence_ms=600,
+        min_speech_ms=400,
+        pre_speech_padding_frames=5,
+    )
+    assert vad.silence_ms == 600
+    assert vad.min_speech_ms == 400
+    assert vad.pre_speech_padding_frames == 5
+    assert vad.silence_threshold_frames == 19
+    assert vad.min_speech_frames == 13
+    assert vad._pre_buffer.maxlen == 5
+
+
 @pytest.mark.asyncio
 async def test_vad_async_process_frame(vad: SileroVAD) -> None:
     """Verify async_process_frame non-blocking offload via asyncio.to_thread."""
