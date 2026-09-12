@@ -9,6 +9,7 @@ from fastapi import FastAPI, status
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from src.api.json_logging import configure_app_logging
 from src.api.router import router
 from src.api.telemetry import get_host_metrics
 from src.config import get_settings
@@ -17,7 +18,12 @@ from src.core.stt import WhisperSTT
 from src.core.tts import KokoroTTS
 from src.core.vad import SileroVAD
 
+# Root logger stays a plain-text fallback for third-party libraries only.
+# App loggers under "echosync." (main, router, pipeline) emit single-line JSON
+# via configure_app_logging(); uvicorn's own loggers keep their default text
+# config and remain LOG_LEVEL-driven as before.
 logging.basicConfig(level=logging.INFO)
+configure_app_logging()
 logger = logging.getLogger("echosync.main")
 
 
@@ -67,6 +73,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     """Create and configure FastAPI application instance."""
+    configure_app_logging()
     app = FastAPI(
         title="EchoSync AI",
         description="Low-Latency Edge/Cloud Hybrid Voice Agent",
@@ -129,6 +136,8 @@ def main() -> None:
     import uvicorn
 
     settings = get_settings()
+    # Honor LOG_LEVEL for app loggers too; uvicorn gets its own log_level below.
+    configure_app_logging(level=settings.log_level)
     uvicorn.run(
         "src.main:app",
         host=settings.host,
