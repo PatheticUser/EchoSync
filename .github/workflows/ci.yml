@@ -95,4 +95,4 @@ jobs:
           RAILWAY_SERVICE_NAME: ${{ secrets.RAILWAY_SERVICE_NAME }}
         run: |
           ~/.railway/bin/railway login --token "$RAILWAY_TOKEN"
-          ~/.railway/bin/railway redeploy --service "$RAILWAY_SERVICE_NAME" --detach true
+          ~/.railway/bin/railway redeploy --service "$RAILWAY_SERVICE_NAME" --detach
