@@ -21,3 +21,6 @@ models/
 .pytest_cache/
 .ruff_cache/
 
+
+# Agent worktrees (parallel branch isolation)
+.claude/worktrees/
