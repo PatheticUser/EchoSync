@@ -10,17 +10,17 @@ Accuracy below target (voice pipeline), production hardening incomplete, zero ob
 
 ## Progress (updated 2026-09-12)
 
-**DONE (merged to main, full pytest green 79 passed/1 skipped):**
+**DONE (merged to main, full pytest green 81 passed/1 skipped):**
 - T1.2 VAD window knobs · T1.3 chunker sentence-boundary · T1.4 LLM gen params · T1.5 prompt rewrite
 - T2.1–T2.3 WS admission gate (origin allowlist, concurrency + per-IP caps, optional bearer token)
 - T2.4 VAD interrupt probability gate (`VAD_INTERRUPT_PROB`)
 - T3.1 unified JSON logging · T3.3 Prometheus /metrics
 - T4.1 CI Railway deploy job
-- Commit range: `194e413` → `HEAD` (10 merge commits). All landed via parallel agent branches beneath `git log --graph`.
+- T1.6 latency budget harness (`scripts/bench_turn.py`)
+- Commit range: `194e413` → `HEAD` (11 merge commits). All landed via parallel agent branches beneath `git log --graph`.
 
 **PENDING:**
 - T1.1 whisper tiny/base/small A/B bench (needs live mic corpus) — run after T1.2+T1.3 tuning
-- T1.6 latency budget harness (scripts/bench_turn.py) — gate before staging
 - T3.2 log drain · T3.4 dashboards/alerts · T3.5 uptime pings · T3.6–3.7 sentry/tracing (post-staging)
 - T4.2 WS keepalive ping · T4.3 instance sizing docs · T4.4 cost lock
 - Staging deploy: Railway account, env vars (GEMINI_API_KEY; WS_ALLOWED_ORIGINS=https://<app>.up.railway.app; APP_ENV=production), healthcheck start_period
@@ -81,9 +81,10 @@ Accuracy below target (voice pipeline), production hardening incomplete, zero ob
   - "If you do not know, say so plainly in one sentence."
 - A/B: run 10 fixed prompts against current vs new system prompt, judge verbosity + grammar (manual).
 
-### T1.6 Latency budget harness
-- Script `scripts/bench_turn.py`: drives WS with canned audio, prints per-stage table (stt_ms, llm_ttft, tts_first_chunk, total_rtt) from `/ready`-style metrics + turn telemetry JSON.
-- Gate: target p50 total turn < ~2.5s after tuning; TTFT < ~1s.
+### T1.6 Latency budget harness ✅
+- Script `scripts/bench_turn.py` drives WS with canned WAV, parses server-side metrics from final LISTENING status, prints per-stage table + p50/p95.
+- Regression gate: p50 total RTT < 2.5s, p50 TTFT < 1.0s (configurable). Exits non-zero on failure — CI-safe.
+- Unit tests in `tests/test_bench.py` (quantile math, WAV resample).
 - Re-run after every Tier-1 change — objective regression check before/after.
 
 ## Tier 2 — Security / abuse before public
