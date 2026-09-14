@@ -84,14 +84,10 @@ jobs:
   deploy:
     name: Deploy to Railway
     needs: docker
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.RAILWAY_TOKEN != ''
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Railway CLI
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/railwayapp/cli/master/install.sh | sh
 
       - name: Deploy GHCR image to Railway
         # Image is already built and pushed to GHCR by the `docker` job.
@@ -100,5 +96,10 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_SERVICE_NAME: ${{ secrets.RAILWAY_SERVICE_NAME }}
         run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "RAILWAY_TOKEN secret not configured; skipping deploy step."
+            exit 0
+          fi
+          curl -fsSL https://raw.githubusercontent.com/railwayapp/cli/master/install.sh | sh
           ~/.railway/bin/railway login --token "$RAILWAY_TOKEN"
           ~/.railway/bin/railway redeploy --service "$RAILWAY_SERVICE_NAME" --detach
