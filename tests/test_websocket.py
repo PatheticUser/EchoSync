@@ -3,6 +3,7 @@
 import asyncio
 import json
 import threading
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import numpy as np
@@ -15,10 +16,18 @@ from src.core.stt import TranscriptionResult
 from src.core.vad import VADEvent, VADState
 from src.main import app
 
+VAD_MODEL = Path("models/vad/silero_vad.onnx")
+STT_MODEL = Path("models/stt")
+TTS_MODEL = Path("models/tts/kokoro-v0_19.onnx")
+
+pytestmark = pytest.mark.requires_models
+
 
 @pytest.fixture(scope="module")
 def client() -> TestClient:
     """Initialize test client with app context."""
+    if not VAD_MODEL.exists() or not STT_MODEL.exists() or not TTS_MODEL.exists():
+        pytest.skip("Neural model weights not present; run scripts/download_models.py first")
     with TestClient(app) as test_client:
         yield test_client
 

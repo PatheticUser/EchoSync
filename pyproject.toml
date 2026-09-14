@@ -43,6 +43,9 @@ package = false
 pythonpath = ["."]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "requires_models: test needs local model weights (skipped on CI; run locally after download_models.py)",
+]
 
 [tool.ruff]
 line-length = 100

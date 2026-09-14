@@ -13,10 +13,14 @@ jobs:
   quality:
     name: Lint & Tests
     runs-on: ubuntu-latest
+    env:
+      # Placeholder key satisfies pydantic-settings validation on import;
+      # live Gemini tests self-skip when the value starts with "test_".
+      GEMINI_API_KEY: test_dummy_for_ci
     steps:
       - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
           enable-cache: true
@@ -30,8 +34,11 @@ jobs:
       - name: Ruff format
         run: uv run ruff format --check src tests scripts
 
-      - name: Pytest
-        run: uv run pytest -v
+      - name: Pytest (no-model unit tests)
+        # Tests marked requires_models need the local models/ directory which is
+        # not committed to the repo.  Skip them on CI; they run locally via
+        # `uv run pytest -v` once weights have been downloaded.
+        run: uv run pytest -v -m "not requires_models"
 
   docker:
     name: Docker build & push
@@ -89,7 +96,6 @@ jobs:
       - name: Deploy GHCR image to Railway
         # Image is already built and pushed to GHCR by the `docker` job.
         # railway redeploy targets the linked service and pulls the newly pushed image.
-        # Alternative: `railway up` builds from the Dockerfile during deploy (slower).
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_SERVICE_NAME: ${{ secrets.RAILWAY_SERVICE_NAME }}

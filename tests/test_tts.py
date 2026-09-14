@@ -14,10 +14,17 @@ from src.core.tts import KokoroTTS
 MODEL_PATH = Path("models/tts/kokoro-v0_19.onnx")
 VOICES_PATH = Path("models/tts/voices.bin")
 
+pytestmark = pytest.mark.requires_models
+
 
 @pytest.fixture(scope="module")
 def tts() -> KokoroTTS:
     """Initialize cached KokoroTTS instance for tests."""
+    if not MODEL_PATH.is_file() or not VOICES_PATH.is_file():
+        pytest.skip(
+            "models/tts/kokoro-v0_19.onnx or voices.bin not present; "
+            "run scripts/download_models.py first"
+        )
     engine = KokoroTTS(
         model_path=MODEL_PATH,
         voices_path=VOICES_PATH,

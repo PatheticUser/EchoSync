@@ -4,15 +4,21 @@ import wave
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from src.core.vad import SileroVAD, VADState
 
 MODEL_PATH = Path("models/vad/silero_vad.onnx")
 FIXTURE_WAV = Path("tests/fixtures/reference.wav")
 
+pytestmark = pytest.mark.requires_models
 
+
+@pytest.mark.requires_models
 def test_vad_live_speech_detection() -> None:
     """Verify Silero VAD v5 detects speech frames on reference WAV with >0.90 probability."""
+    if not MODEL_PATH.exists():
+        pytest.skip("models/vad/silero_vad.onnx not present; run scripts/download_models.py first")
     vad = SileroVAD(model_path=MODEL_PATH, threshold=0.35)
 
     with wave.open(str(FIXTURE_WAV), "rb") as wf:
@@ -36,8 +42,11 @@ def test_vad_live_speech_detection() -> None:
     assert VADState.SPEECH_ACTIVE in state_transitions
 
 
+@pytest.mark.requires_models
 def test_vad_predict_method() -> None:
     """Verify SileroVAD.predict() helper on voice audio."""
+    if not MODEL_PATH.exists():
+        pytest.skip("models/vad/silero_vad.onnx not present; run scripts/download_models.py first")
     vad = SileroVAD(model_path=MODEL_PATH, threshold=0.35)
 
     with wave.open(str(FIXTURE_WAV), "rb") as wf:

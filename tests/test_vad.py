@@ -12,9 +12,14 @@ from src.core.vad import SileroVAD, VADEvent, VADState
 MODEL_PATH = Path("models/vad/silero_vad.onnx")
 
 
+pytestmark = pytest.mark.requires_models
+
+
 @pytest.fixture
 def vad() -> SileroVAD:
     """Initialize SileroVAD instance with test model path."""
+    if not MODEL_PATH.exists():
+        pytest.skip("models/vad/silero_vad.onnx not present; run scripts/download_models.py first")
     return SileroVAD(
         model_path=MODEL_PATH,
         sample_rate=16000,
@@ -158,11 +163,14 @@ def test_vad_state_machine_rejects_transient_noise(vad: SileroVAD) -> None:
     assert vad._current_state == VADState.SILENCE
 
 
+@pytest.mark.requires_models
 def test_vad_silence_threshold_frames_math() -> None:
     """Verify silence_ms converts to frames via ceil at 32ms/frame.
 
     Covers the tuning window 400-1000ms; 600ms -> ceil(600/32) = 19 frames.
     """
+    if not MODEL_PATH.exists():
+        pytest.skip("models/vad/silero_vad.onnx not present; run scripts/download_models.py first")
     cases = {400: 13, 600: 19, 800: 25, 1000: 32}
     for silence_ms, expected_frames in cases.items():
         vad = SileroVAD(
@@ -175,8 +183,11 @@ def test_vad_silence_threshold_frames_math() -> None:
         assert vad.silence_threshold_frames == expected_frames
 
 
+@pytest.mark.requires_models
 def test_vad_min_speech_frames_math() -> None:
     """Verify min_speech_ms converts to frames via ceil at 32ms/frame."""
+    if not MODEL_PATH.exists():
+        pytest.skip("models/vad/silero_vad.onnx not present; run scripts/download_models.py first")
     cases = {250: 8, 400: 13, 600: 19}
     for min_speech_ms, expected_frames in cases.items():
         vad = SileroVAD(
@@ -189,8 +200,11 @@ def test_vad_min_speech_frames_math() -> None:
         assert vad.min_speech_frames == expected_frames
 
 
+@pytest.mark.requires_models
 def test_vad_constructor_accepts_tuning_overrides() -> None:
     """Verify non-default VAD tuning knobs are accepted as constructor overrides."""
+    if not MODEL_PATH.exists():
+        pytest.skip("models/vad/silero_vad.onnx not present; run scripts/download_models.py first")
     vad = SileroVAD(
         model_path=MODEL_PATH,
         sample_rate=16000,

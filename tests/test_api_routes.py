@@ -1,14 +1,24 @@
 """Unit tests for FastAPI health and readiness probe endpoints."""
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
 
+VAD_MODEL = Path("models/vad/silero_vad.onnx")
+STT_MODEL = Path("models/stt")
+TTS_MODEL = Path("models/tts/kokoro-v0_19.onnx")
+
+pytestmark = pytest.mark.requires_models
+
 
 @pytest.fixture(scope="module")
 def client() -> TestClient:
     """Initialize test client with lifespan pre-warming context."""
+    if not VAD_MODEL.exists() or not STT_MODEL.exists() or not TTS_MODEL.exists():
+        pytest.skip("Neural model weights not present; run scripts/download_models.py first")
     with TestClient(app) as test_client:
         yield test_client
 

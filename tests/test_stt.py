@@ -9,12 +9,17 @@ import pytest
 
 from src.core.stt import TranscriptionResult, WhisperSTT
 
+MODEL_PATH = Path("./models/stt")
 FIXTURE_WAV = Path("tests/fixtures/reference.wav")
+
+pytestmark = pytest.mark.requires_models
 
 
 @pytest.fixture(scope="module")
 def stt() -> WhisperSTT:
     """Initialize cached WhisperSTT instance for tests."""
+    if not MODEL_PATH.exists():
+        pytest.skip("models/stt/ not present; run scripts/download_models.py first")
     return WhisperSTT(
         model_name="tiny.en",
         compute_type="int8",
