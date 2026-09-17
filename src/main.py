@@ -53,6 +53,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         cpu_threads=settings.whisper_cpu_threads,
         download_root=settings.whisper_model_dir,
         sample_rate=settings.sample_rate,
+        initial_prompt=settings.whisper_initial_prompt,
+        boost_audio=settings.stt_boost_audio,
     )
     stt.warmup()
     app.state.stt = stt

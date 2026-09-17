@@ -37,6 +37,19 @@ def print_error(msg: str) -> None:
     print(f"\033[1;31m[EchoSync Error]\033[0m {msg}", file=sys.stderr)
 
 
+def _env_value(name: str, default: str) -> str:
+    """Resolve a runtime value from the real environment first, then .env."""
+    if name in os.environ:
+        return os.environ[name]
+    env_file = ROOT_DIR / ".env"
+    if env_file.is_file():
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if line.startswith(f"{name}="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'") or default
+    return default
+
+
 def check_environment() -> bool:
     """Verify .env file and GEMINI_API_KEY exist."""
     env_file = ROOT_DIR / ".env"
@@ -129,9 +142,9 @@ def main() -> int:
         print_error("Failed to verify or download models.")
         return 1
 
-    # Resolve port and host
-    host = args.host or os.environ.get("HOST", "0.0.0.0")
-    port = args.port or int(os.environ.get("PORT", "8000"))
+    # Resolve port and host (real env wins; fall back to .env, then defaults)
+    host = args.host or _env_value("HOST", "0.0.0.0")
+    port = args.port or int(_env_value("PORT", "8000"))
 
     # Spawn browser opener daemon thread if requested
     if not args.no_browser:
@@ -160,7 +173,7 @@ def main() -> int:
         host=host,
         port=port,
         reload=args.reload,
-        log_level=os.environ.get("LOG_LEVEL", "INFO").lower(),
+        log_level=_env_value("LOG_LEVEL", "INFO").lower(),
     )
     return 0
 

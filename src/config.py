@@ -92,6 +92,19 @@ class Settings(BaseSettings):
             return min(4, os.cpu_count() or 2)
         return int(v)
 
+    whisper_initial_prompt: str = Field(
+        default="A conversational voice assistant discussing code, Linux, technology, and daily tasks.",
+        description="Initial vocabulary and domain bias prompt passed to Whisper decoder",
+    )
+    stt_boost_audio: bool = Field(
+        default=True,
+        description="Peak-normalize quiet audio segments to improve Whisper signal-to-noise ratio",
+    )
+    llm_inject_tools_context: bool = Field(
+        default=True,
+        description="Inject live system context and clock into LLM system prompt without latency penalty",
+    )
+
     # Model Parameters: VAD (Silero-VAD ONNX)
     # Tuning guidance: keep the silence window (vad_silence_ms) in the 400-1000ms range.
     # Shorter than the speaker's natural mid-sentence pause clips trailing words,

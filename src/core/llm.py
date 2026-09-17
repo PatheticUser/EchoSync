@@ -25,7 +25,9 @@ DEFAULT_VOICE_SYSTEM_PROMPT = (
     "Never use fillers or hesitation sounds. "
     "Never use markdown, lists, headers, or bullets. "
     "Direct, concise, natural — like a sharp colleague, not a robot. "
-    "If you don't know, say so plainly in one sentence."
+    "If you don't know, say so plainly in one sentence. "
+    "User speech is transcribed locally via fast Whisper STT and may contain minor phonetic typos or homophone substitutions. "
+    "Infer intent phonetically and answer naturally without acknowledging transcription flaws."
 )
 
 
@@ -170,13 +172,19 @@ class GeminiLLM:
             reraise=True,
         )
 
+        system_instruction = self.system_prompt
+        if settings.llm_inject_tools_context:
+            from src.core.tools import format_live_context
+
+            system_instruction = f"{self.system_prompt}\n\n{format_live_context()}"
+
         async for attempt in retrying:
             with attempt:
                 # T1.4: generation params are env-driven via Settings. Note that
                 # max_output_tokens=150 may truncate verbose replies -> clipped TTS
                 # tail; raise the default if truncation is observed.
                 config = types.GenerateContentConfig(
-                    system_instruction=self.system_prompt,
+                    system_instruction=system_instruction,
                     temperature=settings.llm_temperature,
                     top_p=settings.llm_top_p,
                     max_output_tokens=settings.llm_max_output_tokens,

@@ -6,13 +6,15 @@ raises so Docker builds abort instead of shipping a broken model cache.
 
 Sources:
     VAD      : snakers4/silero-vad          (silero_vad.onnx, ~2.3 MB)
-    Whisper  : Systran/faster-whisper-base.en via faster-whisper HF cache
+    Whisper  : Systran/faster-whisper-{WHISPER_MODEL_NAME} via faster-whisper HF cache
+               (default medium.en; override via .env for smaller/faster models)
     TTS      : thewh1teagle/kokoro-onnx GitHub release `model-files`
                (kokoro-v0_19.onnx, voices.bin)
 """
 
 from __future__ import annotations
 
+import os
 import sys
 import urllib.request
 from pathlib import Path
@@ -67,25 +69,48 @@ def download(url: str, dest: Path, min_bytes: int) -> None:
     print(f"[done] {dest.name} ({size} bytes)")
 
 
+def _whisper_model_name() -> str:
+    """Resolve WHISPER_MODEL_NAME from env, then .env, then base.en fallback.
+
+    The shell environment often lacks the .env vars (which pydantic-settings
+    loads at app runtime), so read the project .env file directly when the
+    variable is not exported.
+    """
+    env_val = os.environ.get("WHISPER_MODEL_NAME")
+    if env_val:
+        return env_val
+    env_file = MODELS_DIR.parent / ".env"
+    if env_file.is_file():
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("WHISPER_MODEL_NAME="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'") or "base.en"
+    return "base.en"
+
+
 def warm_whisper() -> None:
     """Prime the CTranslate2 faster-whisper model cache under models/stt."""
+    # Respect the model configured in .env (WHISPER_MODEL_NAME) so the cache
+    # always mirrors what the runtime loads. Falls back to base.en.
+    model_name = _whisper_model_name()
+    cache_name = f"models--Systran--faster-whisper-{model_name}"
     cache_file = MODELS_DIR / "stt" / "CACHEDIR.TAG"
-    if (MODELS_DIR / "stt" / "models--Systran--faster-whisper-base.en").is_dir():
-        print("[skip] faster-whisper base.en already cached under models/stt")
+    if (MODELS_DIR / "stt" / cache_name).is_dir():
+        print(f"[skip] faster-whisper {model_name} already cached under models/stt")
         return
 
-    print("[get ] faster-whisper base.en (HuggingFace cache)")
+    print(f"[get ] faster-whisper {model_name} (HuggingFace cache)")
     from faster_whisper import WhisperModel
 
     WhisperModel(
-        model_size_or_path="base.en",
+        model_size_or_path=model_name,
         device="cpu",
         compute_type="int8",
         download_root=str(MODELS_DIR / "stt"),
     )
     cache_file.parent.mkdir(parents=True, exist_ok=True)
     cache_file.write_text("Signature: 8a477f597d28d172789f06886806bc550635d4d2\n")
-    print("[done] faster-whisper base.en cached")
+    print(f"[done] faster-whisper {model_name} cached")
 
 
 def main() -> int:

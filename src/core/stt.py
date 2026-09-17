@@ -30,12 +30,16 @@ class WhisperSTT:
         cpu_threads: int = 4,
         download_root: Path | str = "./models/stt",
         sample_rate: int = 16000,
+        initial_prompt: str | None = None,
+        boost_audio: bool = True,
     ) -> None:
         self.model_name = model_name
         self.compute_type = compute_type
         self.cpu_threads = cpu_threads
         self.download_root = Path(download_root)
         self.sample_rate = sample_rate
+        self.initial_prompt = initial_prompt
+        self.boost_audio = boost_audio
 
         self._model = WhisperModel(
             model_size_or_path=self.model_name,
@@ -77,6 +81,12 @@ class WhisperSTT:
         norm_audio = self.normalize_audio(audio)
         audio_duration_s = float(len(norm_audio)) / float(self.sample_rate)
 
+        # Workaround 2: Peak AGC boost for quiet voice audio to improve SNR on small models
+        if self.boost_audio and len(norm_audio) > 0:
+            max_val = float(np.max(np.abs(norm_audio)))
+            if 1e-4 < max_val < 0.85:
+                norm_audio = norm_audio * (0.95 / max_val)
+
         start_time = time.perf_counter()
         segments, info = self._model.transcribe(
             audio=norm_audio,
@@ -87,6 +97,7 @@ class WhisperSTT:
             vad_filter=False,
             condition_on_previous_text=False,
             without_timestamps=True,
+            initial_prompt=self.initial_prompt,
         )
 
         # Consume segment generator and assemble full utterance text
