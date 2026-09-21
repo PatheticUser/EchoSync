@@ -150,7 +150,7 @@ class GeminiLLM:
     def __init__(
         self,
         api_key: str | SecretStr,
-        model_name: str = "gemini-3.6-flash",
+        model_name: str = "gemini-3-flash-preview",
         system_prompt: str = DEFAULT_VOICE_SYSTEM_PROMPT,
         memory_turns: int = 8,
         client: Any | None = None,

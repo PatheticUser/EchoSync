@@ -203,17 +203,59 @@ class EdgeTTS:
         text: str,
         voice: str | None = None,
     ) -> AsyncGenerator[bytes, None]:
-        """Synthesize text and yield framed binary 24kHz PCM chunks."""
+        """Synthesize text and yield framed binary 24kHz PCM chunks via zero-delay streaming pipe."""
         cleaned_text = text.strip()
         if not cleaned_text:
             return
 
+        import edge_tts
+
+        v = voice or self.default_voice
         try:
-            pcm_bytes = await self._synthesize_pcm(cleaned_text, voice)
-            total_len = len(pcm_bytes)
-            for offset in range(0, total_len, self.chunk_size):
-                await asyncio.sleep(0)
-                yield pcm_bytes[offset : offset + self.chunk_size]
+            communicate = edge_tts.Communicate(cleaned_text, v)
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg",
+                "-v",
+                "error",
+                "-i",
+                "pipe:0",
+                "-f",
+                "s16le",
+                "-ac",
+                "1",
+                "-ar",
+                str(self.sample_rate),
+                "pipe:1",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            async def _feed_ffmpeg() -> None:
+                try:
+                    async for chunk in communicate.stream():
+                        if chunk["type"] == "audio" and proc.stdin:
+                            proc.stdin.write(chunk["data"])
+                            await proc.stdin.drain()
+                except Exception as feed_err:  # noqa: BLE001
+                    logging.getLogger(__name__).debug("EdgeTTS feeder exception: %s", feed_err)
+                finally:
+                    if proc.stdin:
+                        proc.stdin.close()
+                        await proc.stdin.wait_closed()
+
+            feed_task = asyncio.create_task(_feed_ffmpeg())
+
+            try:
+                while True:
+                    data = await proc.stdout.read(self.chunk_size)
+                    if not data:
+                        break
+                    yield data
+            finally:
+                await feed_task
+                await proc.wait()
+
         except Exception as exc:  # noqa: BLE001
             logging.getLogger(__name__).warning(
                 "EdgeTTS failed (%s), generating fallback tone", exc
@@ -228,10 +270,11 @@ class EdgeTTS:
 
 def create_tts(settings: Any) -> KokoroTTS | EdgeTTS:
     """Factory creating configured TTS engine (EdgeTTS for free-tier/low-CPU, KokoroTTS for offline ONNX)."""
+    out_sr = getattr(settings, "tts_sample_rate", 24000)
     if getattr(settings, "tts_engine", "edge") == "edge":
         return EdgeTTS(
             default_voice=getattr(settings, "edge_voice", "en-US-JennyNeural"),
-            sample_rate=settings.sample_rate,
+            sample_rate=out_sr,
             chunk_size=getattr(settings, "tts_chunk_size", 2048),
         )
     return KokoroTTS(
@@ -239,6 +282,6 @@ def create_tts(settings: Any) -> KokoroTTS | EdgeTTS:
         voices_path=settings.kokoro_voices_path,
         default_voice=settings.tts_voice,
         speed=settings.tts_speed,
-        sample_rate=settings.sample_rate,
+        sample_rate=out_sr,
         chunk_size=settings.tts_chunk_size,
     )

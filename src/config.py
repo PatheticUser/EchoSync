@@ -215,6 +215,10 @@ class Settings(BaseSettings):
         ge=256,
         description="Byte size of TTS audio chunks streamed to the client",
     )
+    tts_sample_rate: int = Field(
+        default=24000,
+        description="Outbound audio synthesis sample rate in Hz",
+    )
 
     # Local Model Cache Paths
     model_cache_dir: Path = Field(

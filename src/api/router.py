@@ -268,7 +268,18 @@ async def websocket_audio_endpoint(websocket: WebSocket) -> None:
             llm=llm,
             tts=tts,
         )
-        await session.send_status("LISTENING")
+        tts_engine_name = getattr(settings, "tts_engine", "edge")
+        await session.send_status(
+            "LISTENING",
+            extra={
+                "engine": {
+                    "tts_engine": tts_engine_name,
+                    "llm_model": settings.gemini_model,
+                    "whisper_model": settings.whisper_model_name,
+                    "profile": "cloud_free_tier" if tts_engine_name == "edge" else "edge_gpu",
+                }
+            },
+        )
     except BaseException:
         # A handshake or setup failure must never leak an admission slot.
         _ws_release_slot(client_ip)

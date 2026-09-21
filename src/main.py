@@ -59,7 +59,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.stt = stt
 
     # 3. Gemini LLM
-    llm = GeminiLLM(api_key=settings.gemini_api_key)
+    llm = GeminiLLM(
+        api_key=settings.gemini_api_key,
+        model_name=settings.gemini_model,
+    )
     app.state.llm = llm
 
     # 4. Acoustic TTS Engine (EdgeTTS for free-tier/low-CPU vs Kokoro for offline ONNX)

@@ -409,7 +409,7 @@
       <div class="panel-card">
         <div class="panel-header">
           <h2 class="panel-title"><span class="dot"></span>Turn Telemetry</h2>
-          <span class="panel-tag">Subsystem SLA Monitor</span>
+          <span class="panel-tag" id="slaProfileTag">Subsystem SLA Monitor</span>
         </div>
         <div class="telemetry-table-wrap">
           <table class="telemetry-table">
@@ -420,25 +420,25 @@
               <tr>
                 <td class="metric-name">VAD Silence Window</td>
                 <td><span class="metric-num" id="hudVadSilence">0.0</span> ms</td>
-                <td>400 ms</td>
+                <td id="targetVad">400 ms</td>
                 <td><span class="sla-pill nominal" id="slaVad">Standby</span></td>
               </tr>
               <tr>
-                <td class="metric-name">STT Latency (Whisper)</td>
+                <td class="metric-name" id="sttMetricLabel">STT Latency (Whisper)</td>
                 <td><span class="metric-num" id="hudStt">0.0</span> ms</td>
-                <td>&le; 250 ms</td>
+                <td id="targetStt">&le; 1800 ms</td>
                 <td><span class="sla-pill nominal" id="slaStt">Standby</span></td>
               </tr>
               <tr>
-                <td class="metric-name">LLM TTFT (Gemini Flash)</td>
+                <td class="metric-name" id="llmMetricLabel">LLM TTFT (Gemini Flash)</td>
                 <td><span class="metric-num" id="hudLlm">0.0</span> ms</td>
-                <td>&le; 300 ms</td>
+                <td id="targetLlm">&le; 2500 ms</td>
                 <td><span class="sla-pill nominal" id="slaLlm">Standby</span></td>
               </tr>
               <tr>
-                <td class="metric-name">TTS 1st Chunk (Kokoro)</td>
+                <td class="metric-name" id="ttsMetricLabel">TTS 1st Chunk (Edge Neural)</td>
                 <td><span class="metric-num" id="hudTts">0.0</span> ms</td>
-                <td>&le; 150 ms</td>
+                <td id="targetTts">&le; 1800 ms</td>
                 <td><span class="sla-pill nominal" id="slaTts">Standby</span></td>
               </tr>
             </tbody>
@@ -888,28 +888,58 @@
         }
       }
 
+      // Runtime Engine Profile & SLA Thresholds
+      let currentProfile = "cloud_free_tier";
+
+      function applyEngineProfile(engine) {
+        if (!engine) return;
+        currentProfile = engine.profile || (engine.tts_engine === "edge" ? "cloud_free_tier" : "edge_gpu");
+        const ttsMetricLabel = document.getElementById("ttsMetricLabel");
+        const slaProfileTag = document.getElementById("slaProfileTag");
+        const targetStt = document.getElementById("targetStt");
+        const targetLlm = document.getElementById("targetLlm");
+        const targetTts = document.getElementById("targetTts");
+
+        if (ttsMetricLabel) {
+          ttsMetricLabel.textContent = `TTS 1st Chunk (${engine.tts_engine === "edge" ? "Edge Neural" : "Kokoro"})`;
+        }
+        if (slaProfileTag) {
+          slaProfileTag.textContent = currentProfile === "cloud_free_tier" ? "Cloud Free-Tier SLA" : "Local GPU SLA";
+        }
+        if (currentProfile === "cloud_free_tier") {
+          if (targetStt) targetStt.innerHTML = "&le; 1800 ms";
+          if (targetLlm) targetLlm.innerHTML = "&le; 2500 ms";
+          if (targetTts) targetTts.innerHTML = "&le; 1800 ms";
+        } else {
+          if (targetStt) targetStt.innerHTML = "&le; 250 ms";
+          if (targetLlm) targetLlm.innerHTML = "&le; 300 ms";
+          if (targetTts) targetTts.innerHTML = "&le; 150 ms";
+        }
+      }
+
       // Update High-Density Telemetry HUD
       function updateTelemetryHUD(metrics) {
         if (!metrics) return;
+        const isCloud = currentProfile === "cloud_free_tier";
         if (metrics.vad_silence_ms !== undefined) {
           hudVadSilence.textContent = metrics.vad_silence_ms.toFixed(1);
           setSlaStatus(slaVad, metrics.vad_silence_ms, 400, 600);
         }
         if (metrics.stt_ms !== undefined) {
           hudStt.textContent = metrics.stt_ms.toFixed(1);
-          setSlaStatus(slaStt, metrics.stt_ms, 250, 500);
+          setSlaStatus(slaStt, metrics.stt_ms, isCloud ? 1800 : 250, isCloud ? 2500 : 500);
         }
         if (metrics.llm_ttft_ms !== undefined) {
           hudLlm.textContent = metrics.llm_ttft_ms.toFixed(1);
-          setSlaStatus(slaLlm, metrics.llm_ttft_ms, 300, 600);
+          setSlaStatus(slaLlm, metrics.llm_ttft_ms, isCloud ? 2500 : 300, isCloud ? 4000 : 600);
         }
         if (metrics.tts_first_chunk_ms !== undefined) {
           hudTts.textContent = metrics.tts_first_chunk_ms.toFixed(1);
-          setSlaStatus(slaTts, metrics.tts_first_chunk_ms, 150, 400);
+          setSlaStatus(slaTts, metrics.tts_first_chunk_ms, isCloud ? 1800 : 150, isCloud ? 2500 : 400);
         }
         if (metrics.total_rtt_ms !== undefined) {
           hudTotalRtt.textContent = metrics.total_rtt_ms.toFixed(1);
-          setSlaStatus(slaTotalRtt, metrics.total_rtt_ms, 800, 1500);
+          setSlaStatus(slaTotalRtt, metrics.total_rtt_ms, isCloud ? 5000 : 800, isCloud ? 7000 : 1500);
         }
       }
 
@@ -1000,6 +1030,10 @@
                       activeAssistantEntry = null;
                       activeAssistantContent = null;
                     }
+                  }
+
+                  if (message.data.engine) {
+                    applyEngineProfile(message.data.engine);
                   }
 
                   if (message.data.metrics) {
