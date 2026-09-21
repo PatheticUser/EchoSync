@@ -51,16 +51,19 @@ _ws_active_by_ip: dict[str, int] = {}
 
 
 def _is_origin_allowed(origin: str | None, settings: Settings) -> bool:
-    """Return whether an inbound ``Origin`` header passes the T2.1 allowlist.
-
-    Browser-backed deployments must present an Origin in ``ws_allowed_origins``.
-    Non-browser clients (local dev workbench, CLIs) often omit the header; that
-    is tolerated only when ``app_env == "development"`` and rejected everywhere
-    else, so a public deployment still requires an allowlisted Origin.
-    """
+    """Return whether an inbound ``Origin`` header passes the T2.1 allowlist."""
     if origin is None:
         return settings.app_env == "development"
-    return origin in settings.ws_allowed_origins
+
+    # Allow wildcard access in dev or explicitly configured deployments
+    if "*" in settings.ws_allowed_origins:
+        return True
+
+    # Normalize trailing slashes for robust matching
+    normalized_origin = origin.rstrip("/")
+    normalized_allowed = {o.rstrip("/") for o in settings.ws_allowed_origins}
+
+    return normalized_origin in normalized_allowed
 
 
 def _client_ip(websocket: WebSocket) -> str:
