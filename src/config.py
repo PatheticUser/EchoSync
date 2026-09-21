@@ -176,7 +176,7 @@ class Settings(BaseSettings):
         description="Nucleus top-p sampling probability for Gemini text generation",
     )
     llm_max_output_tokens: int = Field(
-        default=150,
+        default=350,
         ge=1,
         description="Maximum number of tokens in a Gemini generation reply",
     )

@@ -183,11 +183,17 @@ class GeminiLLM:
                 # T1.4: generation params are env-driven via Settings. Note that
                 # max_output_tokens=150 may truncate verbose replies -> clipped TTS
                 # tail; raise the default if truncation is observed.
+                thinking_cfg = (
+                    types.ThinkingConfig(thinking_budget=0)
+                    if hasattr(types, "ThinkingConfig")
+                    else None
+                )
                 config = types.GenerateContentConfig(
                     system_instruction=system_instruction,
                     temperature=settings.llm_temperature,
                     top_p=settings.llm_top_p,
-                    max_output_tokens=settings.llm_max_output_tokens,
+                    max_output_tokens=max(settings.llm_max_output_tokens, 350),
+                    thinking_config=thinking_cfg,
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
                 )
                 async with asyncio.timeout(settings.llm_timeout_s):
