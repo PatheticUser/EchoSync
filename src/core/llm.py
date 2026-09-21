@@ -150,14 +150,16 @@ class GeminiLLM:
     def __init__(
         self,
         api_key: str | SecretStr,
-        model_name: str = "gemini-3-flash-preview",
+        model_name: str = "gemini-3.1-flash-lite",
         system_prompt: str = DEFAULT_VOICE_SYSTEM_PROMPT,
         memory_turns: int = 8,
         client: Any | None = None,
+        fallback_model: str | None = None,
     ) -> None:
         key_str = api_key.get_secret_value() if isinstance(api_key, SecretStr) else api_key
         self.api_key = key_str
         self.model_name = model_name
+        self.fallback_model = fallback_model
         self.system_prompt = system_prompt
         self.memory_turns = max(0, memory_turns)
         self._client = client or genai.Client(api_key=self.api_key)
@@ -178,30 +180,43 @@ class GeminiLLM:
 
             system_instruction = f"{self.system_prompt}\n\n{format_live_context()}"
 
-        async for attempt in retrying:
-            with attempt:
-                # T1.4: generation params are env-driven via Settings. Note that
-                # max_output_tokens=150 may truncate verbose replies -> clipped TTS
-                # tail; raise the default if truncation is observed.
-                thinking_cfg = (
-                    types.ThinkingConfig(thinking_budget=0)
-                    if hasattr(types, "ThinkingConfig")
-                    else None
+        thinking_cfg = (
+            types.ThinkingConfig(thinking_budget=0) if hasattr(types, "ThinkingConfig") else None
+        )
+        config = types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=settings.llm_temperature,
+            top_p=settings.llm_top_p,
+            max_output_tokens=max(settings.llm_max_output_tokens, 350),
+            thinking_config=thinking_cfg,
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+        )
+
+        models_to_try = [self.model_name]
+        if self.fallback_model and self.fallback_model != self.model_name:
+            models_to_try.append(self.fallback_model)
+
+        last_exc: Exception | None = None
+        for current_model in models_to_try:
+            try:
+                async for attempt in retrying:
+                    with attempt:
+                        async with asyncio.timeout(settings.llm_timeout_s):
+                            return await self._client.aio.models.generate_content_stream(
+                                model=current_model,
+                                contents=contents,
+                                config=config,
+                            )
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Model %s failed (%s), attempting fallback...", current_model, exc
                 )
-                config = types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    temperature=settings.llm_temperature,
-                    top_p=settings.llm_top_p,
-                    max_output_tokens=max(settings.llm_max_output_tokens, 350),
-                    thinking_config=thinking_cfg,
-                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
-                )
-                async with asyncio.timeout(settings.llm_timeout_s):
-                    return await self._client.aio.models.generate_content_stream(
-                        model=self.model_name,
-                        contents=contents,
-                        config=config,
-                    )
+
+        if last_exc:
+            raise last_exc
         raise RuntimeError("Failed to obtain streaming generator from Gemini API")
 
     async def stream_tokens(

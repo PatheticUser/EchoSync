@@ -62,6 +62,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     llm = GeminiLLM(
         api_key=settings.gemini_api_key,
         model_name=settings.gemini_model,
+        fallback_model="gemini-3.6-flash",
     )
     app.state.llm = llm
 

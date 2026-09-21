@@ -404,6 +404,30 @@ async def websocket_audio_endpoint(websocket: WebSocket) -> None:
             logger.info("Dialogue turn %s cancelled due to barge-in", turn_id)
             await session.send_status("LISTENING", turn_id, extra={"interrupted": True})
             raise
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Dialogue turn %s failed: %s", turn_id, exc)
+            fallback_msg = (
+                "Rate limit reached. Please wait a few seconds."
+                if "429" in str(exc)
+                else "I encountered a processing error. Please try again."
+            )
+            with contextlib.suppress(Exception):
+                await session.send_status("SPEAKING", turn_id)
+                await websocket.send_json(
+                    {
+                        "type": "audio_header",
+                        "data": {
+                            "format": "pcm_s16le",
+                            "sample_rate": 24000,
+                            "chunk_index": 1,
+                            "text_segment": fallback_msg,
+                            "turn_id": turn_id,
+                        },
+                    }
+                )
+                async for audio_chunk in session.tts.synthesize_stream(fallback_msg):
+                    await websocket.send_bytes(audio_chunk)
+            await session.send_status("LISTENING", turn_id)
 
     async def pipeline_worker_loop() -> None:
         """Continuously process inbound audio frames through VAD state machine."""
