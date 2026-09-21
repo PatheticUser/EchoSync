@@ -59,7 +59,7 @@ EXPOSE 8000
 
 # Liveness probe via the bundled healthz endpoint.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=60s --retries=5 \
-    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+    CMD ["sh", "-c", "python -c \"import os, urllib.request; p = os.environ.get('PORT', '8000'); urllib.request.urlopen(f'http://127.0.0.1:{p}/healthz', timeout=2)\""]
 
 # Download models on first run (idempotent: skips existing files), then start server.
-CMD ["sh", "-c", "python /app/scripts/download_models.py && uvicorn src.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "python /app/scripts/download_models.py && uvicorn src.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

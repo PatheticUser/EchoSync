@@ -113,9 +113,28 @@ def warm_whisper() -> None:
     print(f"[done] faster-whisper {model_name} cached")
 
 
+def _tts_engine() -> str:
+    """Resolve TTS_ENGINE from env, then .env, then kokoro fallback."""
+    env_val = os.environ.get("TTS_ENGINE")
+    if env_val:
+        return env_val.lower().strip()
+    env_file = MODELS_DIR.parent / ".env"
+    if env_file.is_file():
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("TTS_ENGINE="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'").lower() or "kokoro"
+    return "kokoro"
+
+
 def main() -> int:
-    for url, dest, min_bytes in MODEL_TARGETS:
-        download(url, dest, min_bytes)
+    tts = _tts_engine()
+    download(VAD_MODEL[0], VAD_MODEL[1], VAD_MODEL[2])
+    if tts != "edge":
+        download(KOKORO_MODEL[0], KOKORO_MODEL[1], KOKORO_MODEL[2])
+        download(VOICES_BIN[0], VOICES_BIN[1], VOICES_BIN[2])
+    else:
+        print("[skip] TTS_ENGINE=edge active; skipping Kokoro-82M download")
     warm_whisper()
     print("Model cache ready under", MODELS_DIR)
     return 0
