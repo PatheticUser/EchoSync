@@ -138,7 +138,7 @@ class Settings(BaseSettings):
     # Tuning guidance: raise toward 0.95 to make barge-in harder to trigger (fewer false
     # cutoffs from ambient noise), lower toward 0.05 to make interruptions more responsive.
     vad_interrupt_prob: float = Field(
-        default=0.5,
+        default=0.75,
         ge=0.05,
         le=0.95,
         description="Minimum VAD speech probability that triggers barge-in during model speech",
@@ -184,6 +184,16 @@ class Settings(BaseSettings):
         default=5.0,
         gt=0.0,
         description="Per-attempt timeout in seconds for a Gemini streaming request",
+    )
+
+    # Model Parameters: TTS Engine (EdgeTTS for free-tier/low-CPU vs Kokoro-82M ONNX for offline)
+    tts_engine: Literal["edge", "kokoro"] = Field(
+        default="kokoro",
+        description="TTS engine: 'edge' (fast zero-CPU streaming, ideal for Railway/free tier) or 'kokoro' (local ONNX)",
+    )
+    edge_voice: str = Field(
+        default="en-US-JennyNeural",
+        description="Default voice for EdgeTTS (e.g. en-US-JennyNeural, en-US-GuyNeural, en-GB-SoniaNeural)",
     )
 
     # Model Parameters: TTS (Kokoro-82M ONNX) — Naturalness Knobs

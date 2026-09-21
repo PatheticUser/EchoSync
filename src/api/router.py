@@ -256,10 +256,9 @@ async def websocket_audio_endpoint(websocket: WebSocket) -> None:
             api_key=settings.gemini_api_key,
             model_name=settings.gemini_model,
         )
-        tts: KokoroTTS = getattr(app_state, "tts", None) or KokoroTTS(
-            model_path=settings.kokoro_model_path,
-            voices_path=settings.kokoro_voices_path,
-        )
+        from src.core.tts import create_tts
+
+        tts = getattr(app_state, "tts", None) or create_tts(settings)
 
         session = SessionState(
             websocket=websocket,
@@ -432,10 +431,11 @@ async def websocket_audio_endpoint(websocket: WebSocket) -> None:
 
             if vad_event.state == VADState.SPEECH_ACTIVE:
                 # Barge-in during model speech is probability-gated: only a confident speech
-                # frame (>= vad_interrupt_prob) cuts the assistant off, so faint background
-                # noise below the threshold is ignored and the model turn continues.
+                # frame (>= vad_interrupt_prob) cuts the assistant off while it is actively
+                # speaking. Note: we ONLY interrupt during SPEAKING, never during STREAMING_LLM
+                # (so ambient room noise while waiting for LLM doesn't cancel generation).
                 if (
-                    session.current_state in ("SPEAKING", "STREAMING_LLM")
+                    session.current_state == "SPEAKING"
                     and vad_event.probability >= settings.vad_interrupt_prob
                 ):
                     await session.stop_active_turn()

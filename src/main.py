@@ -16,7 +16,6 @@ from src.api.telemetry import get_host_metrics
 from src.config import get_settings
 from src.core.llm import GeminiLLM
 from src.core.stt import WhisperSTT
-from src.core.tts import KokoroTTS
 from src.core.vad import SileroVAD
 
 # Root logger stays a plain-text fallback for third-party libraries only.
@@ -63,14 +62,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     llm = GeminiLLM(api_key=settings.gemini_api_key)
     app.state.llm = llm
 
-    # 4. Kokoro TTS
-    tts = KokoroTTS(
-        model_path=settings.kokoro_model_path,
-        voices_path=settings.kokoro_voices_path,
-        default_voice=settings.tts_voice,
-        speed=settings.tts_speed,
-        chunk_size=settings.tts_chunk_size,
-    )
+    # 4. Acoustic TTS Engine (EdgeTTS for free-tier/low-CPU vs Kokoro for offline ONNX)
+    from src.core.tts import create_tts
+
+    tts = create_tts(settings)
     tts.warmup()
     app.state.tts = tts
 
