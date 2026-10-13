@@ -69,7 +69,7 @@ def _is_origin_allowed(origin: str | None, settings: Settings) -> bool:
 def _client_ip(websocket: WebSocket) -> str:
     """Best-effort client IP for the T2.2 per-IP cap.
 
-    Prefers the first ``X-Forwarded-For`` entry (written by the Railway / nginx
+    Prefers the first ``X-Forwarded-For`` entry (written by the Caddy / nginx
     edge proxy), then ``X-Real-IP``, then the direct peer address. A client that
     can reach this server directly can fake these headers, so the origin
     allowlist (T2.1) and optional bearer token (T2.3) remain the primary abuse

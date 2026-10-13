@@ -1,7 +1,6 @@
 .git
 .venv
 models/
-tests/
 dist/
 build/
 *.egg-info
@@ -10,9 +9,23 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .env
+.env.production
+.env.production.example
 *.md
 Dockerfile
 docker-compose.yml
 .dockerignore
 .github/
 .gitignore
+
+# Not needed inside the image build context (only src/ + scripts/ + lockfiles
+# are COPY'd) — kept out to stay lean and avoid shipping internal tooling.
+.agents/
+.claude/
+.freebuff/
+docs/
+tests/
+Caddyfile
+run.sh
+run.fish
+.python-version

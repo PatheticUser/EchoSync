@@ -15,7 +15,7 @@ Accuracy below target (voice pipeline), production hardening incomplete, zero ob
 - T2.1–T2.3 WS admission gate (origin allowlist, concurrency + per-IP caps, optional bearer token)
 - T2.4 VAD interrupt probability gate (`VAD_INTERRUPT_PROB`)
 - T3.1 unified JSON logging · T3.3 Prometheus /metrics
-- T4.1 CI Railway deploy job
+- T4.1 CI deploy job — RETIRED: deployment migrated to Oracle Cloud Always Free ARM64 (Ampere A1) + Docker Compose + Caddy, see `docs/DEPLOY_OCI.md`
 - T1.6 latency budget harness (`scripts/bench_turn.py`)
 - Commit range: `194e413` → `HEAD` (11 merge commits). All landed via parallel agent branches beneath `git log --graph`.
 
@@ -23,7 +23,7 @@ Accuracy below target (voice pipeline), production hardening incomplete, zero ob
 - T1.1 whisper tiny/base/small A/B bench (needs live mic corpus) — run after T1.2+T1.3 tuning
 - T3.2 log drain · T3.4 dashboards/alerts · T3.5 uptime pings · T3.6–3.7 sentry/tracing (post-staging)
 - T4.2 WS keepalive ping · T4.3 instance sizing docs · T4.4 cost lock
-- Staging deploy: Railway account, env vars (GEMINI_API_KEY; WS_ALLOWED_ORIGINS=https://<app>.up.railway.app; APP_ENV=production), healthcheck start_period
+- Staging deploy: OCI Ampere A1 VM, env vars in `.env.production` (GEMINI_API_KEY; WS_ALLOWED_ORIGINS=https://<DOMAIN>; APP_ENV=production), healthcheck start_period — see `docs/DEPLOY_OCI.md`
 
 ---
 
@@ -31,7 +31,7 @@ Accuracy below target (voice pipeline), production hardening incomplete, zero ob
 
 | ID | Gap | Detail | Status |
 |----|-----|--------|--------|
-| T0.1 | Platform choice | Railway or Fly.io full-stack, ≥2GB RAM, 1vCPU. Render only on paid Standard 2GB. No Vercel/Netlify backend. | open |
+| T0.1 | Platform choice | RESOLVED: Oracle Cloud Always Free Ampere A1 Flex (ARM64), ≥2GB RAM, Docker Compose behind Caddy (`docs/DEPLOY_OCI.md`). | done |
 | T0.2 | Secrets on platform | `GEMINI_API_KEY` required field — app won't boot without it (`src/config.py:25`). Set `APP_ENV=production`, `LOG_LEVEL=INFO`. | open |
 | T0.3 | Model id verify | `GEMINI_MODEL=gemini-3.6-flash` hardcoded default (`src/config.py:30`). Verify id exists in your Google account + quota. | open |
 | T0.4 | Healthcheck grace | Platform start-period ≥60s (warmup 10–30s + image pull). | open |
@@ -112,7 +112,7 @@ Accuracy below target (voice pipeline), production hardening incomplete, zero ob
 
 | ID | Gap | Action |
 |----|-----|--------|
-| T4.1 | CI deploy step | auto-deploy `sha-` image to Railway/Render on main merge (`railway up` CLI or Render webhook) |
+| T4.1 | CI deploy step | GHCR image is multi-arch (amd64+arm64); VM runs `docker compose --env-file .env.production up -d --build` on main merge (manual SSH or a small webhook — no platform CLI) |
 | T4.2 | WS keepalive | server-periodic WS ping so idle sessions survive proxy timeouts |
 | T4.3 | Instance sizing docs | RAM≥2GB, 1vCPU; horizontal scale (instances), not `--workers` (each worker reloads models, RAM doubles) |
 | T4.4 | Cost lock | 1 staging instance; scale down test; Gemini flash traffic cost watch |

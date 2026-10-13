@@ -1,0 +1,49 @@
+# EchoSync — Caddy reverse proxy configuration.
+#
+# * Automatic TLS: Caddy obtains and renews Let's Encrypt certificates by
+#   itself (HTTP-01 via port 80). No certbot, no cron. If DOMAIN is an IP
+#   address or "localhost", Caddy falls back to its internal self-signed CA.
+# * WebSocket: Caddy's reverse_proxy natively forwards the Connection/Upgrade
+#   headers, so wss://<DOMAIN>/ws/audio works out of the box. The explicit
+#   header_up lines below are kept for nginx-config parity/visibility.
+# * flush_interval -1 disables response buffering — required for the
+#   streaming LLM/TTS/SSE-style responses to stay real-time.
+#
+# DOMAIN is injected by docker-compose from .env.production
+# (run: docker compose --env-file .env.production up -d).
+
+{$DOMAIN:localhost} {
+	encode zstd gzip
+
+	# Baseline security headers for the landing page + workbench.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	reverse_proxy app:8000 {
+		# WebSocket proxy headers (natively supported by Caddy; explicit for parity).
+		header_up Upgrade {>Upgrade}
+		header_up Connection {>Connection}
+		# Correct client IP + scheme behind the proxy (honored by the app's
+		# per-IP WebSocket admission gate via X-Forwarded-For).
+		# Overwrite (not append) X-Forwarded-For: the app's per-IP WebSocket
+		# admission gate reads the FIRST entry, so a client-spoofed chain must
+		# never reach it. `caddy validate` warns these are "unnecessary" — that
+		# warning is expected and intentional. X-Forwarded-Proto is set natively.
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		# Stream responses unbuffered (Gemini token streams, telemetry).
+		flush_interval -1
+	}
+
+	# Structured access logs to stdout (picked up by Docker's json-file driver
+	# with the rotation limits defined in docker-compose.yml).
+	log {
+		output stdout
+		format json
+	}
+}

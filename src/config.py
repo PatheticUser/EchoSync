@@ -189,7 +189,7 @@ class Settings(BaseSettings):
     # Model Parameters: TTS Engine (EdgeTTS for free-tier/low-CPU vs Kokoro-82M ONNX for offline)
     tts_engine: Literal["edge", "kokoro"] = Field(
         default="kokoro",
-        description="TTS engine: 'edge' (fast zero-CPU streaming, ideal for Railway/free tier) or 'kokoro' (local ONNX)",
+        description="TTS engine: 'edge' (fast zero-CPU streaming, ideal for low-CPU/free-tier hosts) or 'kokoro' (local ONNX, offline)",
     )
     edge_voice: str = Field(
         default="en-US-JennyNeural",

@@ -17,7 +17,7 @@ Low-latency edge/cloud hybrid conversational voice agent. Raw audio is captured,
 | **Observability** | Structured JSON logs, Prometheus `/metrics`, per-turn telemetry |
 | **Security** | WS origin allowlist, concurrency + per-IP caps, optional bearer token |
 | **Tests** | 81 passed / 1 skipped (full pytest suite) |
-| **CI/CD** | GitHub Actions → ruff + pytest + multi-stage Docker → GHCR (`latest` + `sha-`) → Railway auto-deploy (opt-in) |
+| **CI/CD** | GitHub Actions → ruff + pytest + multi-stage multi-arch Docker (amd64 + arm64) → GHCR (`latest` + `sha-`) |
 
 ---
 
@@ -116,7 +116,7 @@ PORT=8000
 LOG_LEVEL=INFO
 
 # WebSocket admission gate (production: set to your public origin)
-WS_ALLOWED_ORIGINS=["http://127.0.0.1:8000","http://localhost:8000","https://your-app.up.railway.app"]
+WS_ALLOWED_ORIGINS=["http://127.0.0.1:8000","http://localhost:8000","https://voice.example.com"]
 WS_MAX_CONCURRENT=10
 WS_MAX_PER_IP=3
 # WS_BEARER_TOKEN=optional_shared_secret
@@ -164,7 +164,7 @@ KOKORO_VOICES_PATH=./models/tts/voices.bin
 **Production notes:**
 - `GEMINI_API_KEY` is **required** — app will not boot without it.
 - `APP_ENV=production` enforces `WS_ALLOWED_ORIGINS`; default allows only localhost.
-- Railway/Render: set RAM ≥ 2 GB, healthcheck `start_period ≥ 60s` (model warm-up).
+- Docker/VM deployments: set RAM ≥ 2 GB; keep healthcheck `start_period ≥ 60s` (model warm-up; the OCI runbook uses 300 s to cover first-boot weight downloads).
 
 ---
 
@@ -189,12 +189,13 @@ uv run echosync
 
 ---
 
-## Docker (Zero Cold-Start)
+## Docker
 
-Model weights are baked at build time — container starts instantly.
+Model weights are **not** baked into the image — they are downloaded on first
+container start (idempotent) into the `models` volume, keeping builds fast.
 
 ```bash
-# Build (downloads + caches all weights)
+# Build (native arch; multi-arch via buildx)
 docker build -t echosync:latest .
 
 # Run (reads .env for GEMINI_API_KEY)
@@ -291,12 +292,15 @@ Same harness doubles as the **T1.1 Whisper A/B rig** — change `WHISPER_MODEL_N
 
 ```
 EchoSync/
-├── .github/workflows/ci.yml      # ruff + pytest + Docker → GHCR + Railway deploy
-├── docker-compose.yml            # Local container stack
-├── Dockerfile                    # Multi-stage, bakes weights, non-root, healthcheck
+├── .github/workflows/ci.yml      # ruff + pytest + multi-arch Docker → GHCR
+├── docker-compose.yml            # Production stack: app + Caddy (OCI ARM64)
+├── Caddyfile                     # Auto-TLS reverse proxy with WebSocket support
+├── Dockerfile                    # Multi-stage, multi-arch (amd64+arm64), non-root
 ├── .dockerignore
 ├── pyproject.toml                # uv project, deps, ruff/pytest config
 ├── .env.example                  # Documented config template
+├── .env.production.example       # Production template (OCI + Caddy)
+├── docs/DEPLOY_OCI.md            # Oracle Cloud ARM64 deployment runbook
 ├── GAPS.md                       # Living backlog (tiers, tickets, progress)
 ├── ARCHITECTURE.md               # Deep system design
 ├── PHASES.md                     # Historical phased implementation log
@@ -328,25 +332,22 @@ EchoSync/
 `.github/workflows/ci.yml` (runs on push to `main`):
 
 1. **quality** — `ruff check`, `ruff format --check`, `pytest`
-2. **docker** — Multi-stage build, BuildKit cache → push `ghcr.io/PatheticUser/EchoSync:latest` + `sha-<short>` + `branch-<name>`
-3. **deploy** (conditional) — If `RAILWAY_TOKEN` + `RAILWAY_SERVICE_NAME` secrets present: `railway redeploy --service $NAME --detach` pulling the new `sha-` image
-
-Add secrets in GitHub → Settings → Secrets → Actions to enable auto-deploy.
+2. **docker** — Multi-stage, multi-arch (`linux/amd64` + `linux/arm64`), BuildKit cache → push `ghcr.io/PatheticUser/EchoSync:latest` + `sha-<short>` + `branch-<name>`
 
 ---
 
-## Deployment Checklist (Staging)
+## Deployment (Oracle Cloud ARM64)
 
-- [ ] Railway account + project created
-- [ ] GitHub secrets: `RAILWAY_TOKEN`, `RAILWAY_SERVICE_NAME`
-- [ ] Railway env vars:
-  - `GEMINI_API_KEY` (required)
-  - `APP_ENV=production`
-  - `WS_ALLOWED_ORIGINS=https://<your-app>.up.railway.app`
-  - `LOG_LEVEL=INFO`
-- [ ] RAM ≥ 2 GB, 1 vCPU
-- [ ] Healthcheck `start_period ≥ 60s`
-- [ ] `git push origin main` → CI builds → Railway pulls `sha-` image → live
+Production target: Docker Compose behind Caddy on an Always Free Ampere A1
+(ARM64) VM — see **[docs/DEPLOY_OCI.md](docs/DEPLOY_OCI.md)** for the full runbook
+(VCN security rules, ufw/iptables, verification).
+
+- [ ] VM: Ubuntu 24.04 aarch64, Ampere A1 Flex, RAM ≥ 2 GB
+- [ ] VCN Security List: ingress 80/tcp, 443/tcp (+ 443/udp optional), SSH locked to your IP
+- [ ] Host firewall (ufw): allow 22/80/443 only
+- [ ] `cp .env.production.example .env.production` → set `GEMINI_API_KEY`, `DOMAIN`, `WS_ALLOWED_ORIGINS=https://<DOMAIN>` (keep `APP_ENV=production`)
+- [ ] `docker compose --env-file .env.production up -d --build`
+- [ ] Verify: `docker ps` shows both containers `healthy`; `curl https://<DOMAIN>/healthz` and `/ready` return 200
 
 ---
 

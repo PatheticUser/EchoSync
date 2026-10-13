@@ -1,0 +1,1451 @@
+<title>EchoSync Architecture</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --bg:        #0A0E1A;
+    --surface:   #111827;
+    --elevated:  #1E293B;
+    --border:    #243044;
+    --muted:     #475569;
+    --text-dim:  #94A3B8;
+    --text:      #CBD5E1;
+    --text-hi:   #F1F5F9;
+    --accent:    #38BDF8;
+    --accent2:   #818CF8;
+    --flow:      #10B981;
+    --warn:      #F59E0B;
+
+    --node-client:   #0F2942;
+    --node-gateway:  #0F2330;
+    --node-vad:      #0A2318;
+    --node-stt:      #0A2318;
+    --node-llm:      #1A1040;
+    --node-tts:      #0A2318;
+    --node-ext:      #1A1428;
+    --node-obs:      #1F1A08;
+
+    --node-border-client:  #1D5A8A;
+    --node-border-gateway: #1B4D6E;
+    --node-border-vad:     #166534;
+    --node-border-stt:     #1B5E40;
+    --node-border-llm:     #4338CA;
+    --node-border-tts:     #1B5E40;
+    --node-border-ext:     #4A2570;
+    --node-border-obs:     #785E10;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    overflow: hidden;
+  }
+
+  /* ── Layout ── */
+  #shell {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  #topbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 20px;
+    height: 52px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    z-index: 10;
+  }
+
+  #topbar .logo {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  #topbar .sep { flex: 1; }
+  #topbar .tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 7px;
+    letter-spacing: 0.05em;
+  }
+
+  #workspace {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ── Canvas ── */
+  #canvas-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+  }
+  #canvas-wrap.panning { cursor: grabbing; }
+
+  #canvas {
+    position: absolute;
+    top: 0; left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+
+  /* ── Detail Panel ── */
+  #panel {
+    width: 320px;
+    flex: none;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateX(100%);
+    transition: transform 0.22s cubic-bezier(0.4,0,0.2,1);
+  }
+  #panel.open { transform: translateX(0); }
+
+  #panel-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    flex: none;
+  }
+  #panel-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex: none;
+  }
+  #panel-title { font-weight: 600; font-size: 13px; color: var(--text-hi); }
+  #panel-subtitle { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  #panel-close {
+    margin-left: auto;
+    background: none; border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 4px;
+  }
+  #panel-close:hover { color: var(--text); background: var(--elevated); }
+
+  #panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  #panel-body::-webkit-scrollbar { width: 4px; }
+  #panel-body::-webkit-scrollbar-track { background: transparent; }
+  #panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .p-section { display: flex; flex-direction: column; gap: 8px; }
+  .p-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .p-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--text-dim);
+    background: var(--elevated);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 8px;
+  }
+  .p-chip .dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex: none;
+  }
+  .p-chip .dot.green { background: var(--flow); }
+  .p-chip .dot.purple { background: var(--accent2); }
+  .p-chip .dot.amber { background: var(--warn); }
+  .p-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+
+  .p-kv { display: flex; flex-direction: column; gap: 4px; }
+  .p-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 11px;
+  }
+  .p-row .k { color: var(--text-dim); flex: none; min-width: 90px; }
+  .p-row .v {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text);
+    word-break: break-all;
+  }
+  .p-row .v.hi { color: var(--accent); }
+
+  .p-divider { height: 1px; background: var(--border); }
+
+  .p-prose {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  .p-path {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--accent2);
+    background: var(--elevated);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 10px;
+    word-break: break-all;
+  }
+
+  /* ── Bottom bar ── */
+  #bottombar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 20px;
+    height: 44px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    z-index: 10;
+  }
+
+  .bb-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+
+  .step-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    background: var(--elevated);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: all 0.12s;
+    white-space: nowrap;
+  }
+  .step-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .step-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(56,189,248,0.08); }
+
+  .sep-v { width: 1px; height: 20px; background: var(--border); flex: none; }
+
+  #step-track {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  #step-track::-webkit-scrollbar { display: none; }
+
+  .step-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    background: transparent;
+    cursor: pointer;
+    flex: none;
+    transition: all 0.15s;
+  }
+  .step-dot.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 6px rgba(56,189,248,0.6);
+  }
+  .step-dot.done { background: var(--flow); border-color: var(--flow); }
+
+  .zoom-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 4px;
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.12s;
+  }
+  .zoom-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── SVG Node Styles ── */
+  .node-group { cursor: pointer; }
+  .node-group:hover .node-rect { filter: brightness(1.15); }
+  .node-group:hover .node-border { opacity: 1; }
+
+  .node-rect { transition: filter 0.15s; }
+  .node-border { opacity: 0.5; transition: opacity 0.15s; }
+
+  .node-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    fill: #F1F5F9;
+    pointer-events: none;
+  }
+  .node-sublabel {
+    font-family: 'Inter', sans-serif;
+    font-size: 9.5px;
+    fill: #94A3B8;
+    pointer-events: none;
+  }
+  .node-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8.5px;
+    fill: #38BDF8;
+    pointer-events: none;
+  }
+
+  .edge { fill: none; stroke-linecap: round; }
+  .edge-primary { stroke: #10B981; stroke-width: 1.8; }
+  .edge-secondary { stroke: #334155; stroke-width: 1.2; }
+  .edge-dashed { stroke: #475569; stroke-width: 1; stroke-dasharray: 4 3; }
+
+  .cluster-rect {
+    fill: none;
+    stroke-dasharray: 5 4;
+    rx: 12;
+  }
+  .cluster-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    fill: #475569;
+    text-transform: uppercase;
+  }
+
+  .flow-arrow {
+    stroke: #10B981;
+    stroke-width: 1.8;
+    fill: none;
+    stroke-linecap: round;
+  }
+
+  /* Flow pulse animation */
+  @keyframes flow-dash {
+    to { stroke-dashoffset: -20; }
+  }
+  .edge-animated {
+    stroke-dasharray: 8 5;
+    animation: flow-dash 0.6s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .edge-animated { animation: none; }
+  }
+
+  /* Node highlight during playback */
+  .node-highlight .node-rect {
+    filter: brightness(1.3) drop-shadow(0 0 8px rgba(56,189,248,0.5));
+  }
+  .node-highlight .node-border { opacity: 1; stroke-opacity: 1; }
+
+  /* Hover glow effect */
+  .node-group:hover .node-glow {
+    opacity: 1;
+  }
+  .node-glow {
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  /* Legend */
+  #legend {
+    position: absolute;
+    bottom: 12px;
+    left: 14px;
+    background: rgba(17,24,39,0.85);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    backdrop-filter: blur(4px);
+  }
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .legend-line {
+    width: 22px;
+    height: 2px;
+    border-radius: 1px;
+    flex: none;
+  }
+
+  /* Tooltip */
+  #tooltip {
+    position: absolute;
+    background: var(--elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: var(--text-dim);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s;
+    z-index: 100;
+    white-space: nowrap;
+  }
+  #tooltip.show { opacity: 1; }
+
+  /* Step label overlay */
+  #step-label {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(17,24,39,0.9);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 5px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 50;
+    white-space: nowrap;
+    backdrop-filter: blur(4px);
+  }
+  #step-label.show { opacity: 1; }
+
+  /* Responsive */
+  @media (max-width: 680px) {
+    #panel { width: 100%; position: absolute; top: 0; right: 0; height: 100%; z-index: 20; }
+    #topbar .tag { display: none; }
+  }
+</style>
+
+<div id="shell">
+  <div id="topbar">
+    <span class="logo">ECHOSYNC</span>
+    <span class="tag">v0.1.0</span>
+    <span class="tag">FastAPI · Python 3.11</span>
+    <span class="tag">Docker Compose / Caddy · OCI ARM64</span>
+    <div class="sep"></div>
+    <span class="tag" style="color:var(--flow);border-color:var(--flow)">Runtime Architecture</span>
+  </div>
+
+  <div id="workspace">
+    <div id="canvas-wrap">
+      <div id="canvas">
+        <svg id="diagram" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <div id="legend">
+        <div class="legend-row">
+          <div class="legend-line" style="background:var(--flow)"></div>
+          Primary voice flow
+        </div>
+        <div class="legend-row">
+          <div class="legend-line" style="background:var(--border)"></div>
+          Internal call
+        </div>
+        <div class="legend-row">
+          <div class="legend-line" style="background:var(--muted);height:1px;background:repeating-linear-gradient(to right,var(--muted) 0,var(--muted) 4px,transparent 4px,transparent 7px)"></div>
+          Config / startup
+        </div>
+      </div>
+      <div id="tooltip"></div>
+      <div id="step-label"></div>
+    </div>
+
+    <div id="panel">
+      <div id="panel-header">
+        <div id="panel-icon"></div>
+        <div>
+          <div id="panel-title"></div>
+          <div id="panel-subtitle"></div>
+        </div>
+        <button id="panel-close">×</button>
+      </div>
+      <div id="panel-body"></div>
+    </div>
+  </div>
+
+  <div id="bottombar">
+    <span class="bb-label">FLOW</span>
+    <div class="sep-v"></div>
+    <div id="step-track"></div>
+    <div class="sep-v"></div>
+    <button class="zoom-btn" id="zoom-out" title="Zoom out">−</button>
+    <button class="zoom-btn" id="zoom-in" title="Zoom in">+</button>
+    <button class="zoom-btn" id="zoom-fit" title="Fit view" style="width:auto;padding:0 8px;font-size:10px;font-family:'JetBrains Mono',monospace">FIT</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  DATA MODEL
+// ═══════════════════════════════════════════════════════════
+
+const NODES = [
+  {
+    id: 'browser',
+    label: 'Browser Client',
+    sub: 'Web AudioWorklet',
+    icon: '🌐',
+    x: 60, y: 200, w: 148, h: 72,
+    fill: '#0F2942', stroke: '#1D5A8A',
+    accentDot: '#38BDF8',
+    detail: {
+      role: 'User-facing voice interface',
+      files: ['src/static/app.html', 'src/static/audio-processor.js', 'src/static/index.html'],
+      tech: ['Web Audio API', 'AudioWorklet', 'WebSocket (binary + JSON)'],
+      endpoints: ['/  (landing)', '/app  (voice console)'],
+      props: [
+        { k: 'Audio format', v: 'PCM s16le, 16kHz, mono' },
+        { k: 'Frame size', v: '512 samples (32 ms)' },
+        { k: 'Transport', v: 'WebSocket binary frames + JSON control' },
+        { k: 'Barge-in', v: 'user_interrupt JSON control frame' },
+      ],
+      desc: 'Captures microphone via AudioWorklet at 16kHz mono, streams raw PCM frames over WebSocket. Receives binary PCM audio back at 24kHz for playback. Also handles JSON status/transcript/audio_header events.',
+    }
+  },
+  {
+    id: 'gateway',
+    label: 'WS Gateway',
+    sub: 'FastAPI / Uvicorn',
+    icon: '⚡',
+    x: 268, y: 200, w: 148, h: 72,
+    fill: '#0F2330', stroke: '#1B4D6E',
+    accentDot: '#38BDF8',
+    detail: {
+      role: 'WebSocket admission + session orchestrator',
+      files: ['src/main.py', 'src/api/router.py'],
+      tech: ['FastAPI', 'Uvicorn (ASGI)', 'asyncio.Semaphore'],
+      endpoints: ['/ws/audio  (WebSocket)', '/healthz', '/ready', '/metrics', '/static/*'],
+      props: [
+        { k: 'Max concurrent', v: 'ws_max_concurrent (default 10)' },
+        { k: 'Max per IP', v: 'ws_max_per_ip (default 3)' },
+        { k: 'Auth', v: 'Origin allowlist + optional Bearer token' },
+        { k: 'Close codes', v: '4403 rejected / 4401 unauthorized' },
+        { k: 'Session ID', v: 'ses_<8-hex>' },
+      ],
+      desc: 'Three-tier admission gate (T2.1 origin, T2.2 concurrency, T2.3 bearer) runs before accept(). Per-session asyncio tasks: receive_frames_loop + pipeline_worker_loop. Model singletons are pre-warmed at startup and stored in app.state.',
+    }
+  },
+  {
+    id: 'vad',
+    label: 'Silero VAD',
+    sub: 'ONNX Runtime · CPU',
+    icon: '🎙',
+    x: 476, y: 100, w: 148, h: 72,
+    fill: '#0A2318', stroke: '#166534',
+    accentDot: '#10B981',
+    detail: {
+      role: 'Voice activity detection — utterance segmentation',
+      files: ['src/core/vad.py', 'models/vad/silero_vad.onnx'],
+      tech: ['ONNX Runtime (CPU)', 'Silero-VAD', 'numpy'],
+      props: [
+        { k: 'Model', v: 'silero_vad.onnx (v4/v5 auto-detect)' },
+        { k: 'Frame size', v: '512 samples @ 16kHz = 32ms' },
+        { k: 'Threshold', v: 'vad_threshold (default 0.35)' },
+        { k: 'Silence window', v: 'vad_silence_ms (default 400ms)' },
+        { k: 'Min speech', v: 'vad_min_speech_ms (default 250ms)' },
+        { k: 'Pre-padding', v: 'vad_pre_padding_frames (default 3)' },
+        { k: 'Barge-in gate', v: 'vad_interrupt_prob (default 0.75)' },
+        { k: 'ONNX threads', v: '1 inter + 1 intra (event-loop safe)' },
+      ],
+      desc: 'Stateful LSTM inference per 32ms frame. Emits SILENCE / SPEECH_ACTIVE / SPEECH_END events. On SPEECH_END emits float32 audio buffer to STT. Barge-in only fires during SPEAKING state, not STREAMING_LLM, gated by probability threshold.',
+    }
+  },
+  {
+    id: 'stt',
+    label: 'Faster-Whisper',
+    sub: 'CTranslate2 · int8',
+    icon: '📝',
+    x: 476, y: 220, w: 148, h: 72,
+    fill: '#0A2318', stroke: '#1B5E40',
+    accentDot: '#10B981',
+    detail: {
+      role: 'Local speech-to-text transcription',
+      files: ['src/core/stt.py', 'models/stt/'],
+      tech: ['faster-whisper', 'CTranslate2', 'numpy'],
+      props: [
+        { k: 'Model', v: 'base.en (default)' },
+        { k: 'Compute', v: 'int8 CPU quantized' },
+        { k: 'CPU threads', v: 'min(4, cpu_count)' },
+        { k: 'Beam size', v: '1 (greedy, deterministic)' },
+        { k: 'Language', v: 'en forced' },
+        { k: 'AGC boost', v: 'peak-normalize if RMS < 0.85' },
+        { k: 'Async', v: 'asyncio.to_thread()' },
+      ],
+      desc: 'Runs in a thread pool to avoid blocking the event loop. Warmup fires a 0.2s zero-filled buffer on startup to pre-compile the CTranslate2 graph. Optional AGC peak-normalization improves SNR for quiet voices.',
+    }
+  },
+  {
+    id: 'llm',
+    label: 'Gemini LLM',
+    sub: 'Google AI Studio · streaming',
+    icon: '🧠',
+    x: 684, y: 200, w: 148, h: 72,
+    fill: '#1A1040', stroke: '#4338CA',
+    accentDot: '#818CF8',
+    detail: {
+      role: 'Streaming language model — conversational reasoning',
+      files: ['src/core/llm.py'],
+      tech: ['google-genai SDK', 'tenacity (retry)', 'asyncio.timeout'],
+      props: [
+        { k: 'Primary model', v: 'gemini-3.6-flash' },
+        { k: 'Fallback model', v: 'gemini-3.6-flash' },
+        { k: 'Temperature', v: '0.4' },
+        { k: 'Top-p', v: '0.95' },
+        { k: 'Max tokens', v: '350' },
+        { k: 'Timeout/attempt', v: 'llm_timeout_s (default 5s)' },
+        { k: 'Retry', v: '3 attempts, exp backoff (429/5xx)' },
+        { k: 'Memory', v: 'llm_memory_turns rolling (default 8)' },
+        { k: 'Thinking', v: 'budget=0 (disabled)' },
+      ],
+      desc: 'SentenceChunker parses the token stream into vocalizable clauses at comma/colon boundaries for first chunk (low latency), then sentence-terminals for subsequent chunks. Live context (time, CPU/RAM) injected into system prompt at zero network cost. Rolling conversation memory enforces strict user/model alternation.',
+    }
+  },
+  {
+    id: 'tts',
+    label: 'TTS Engine',
+    sub: 'Kokoro ONNX | EdgeTTS',
+    icon: '🔊',
+    x: 892, y: 200, w: 148, h: 72,
+    fill: '#0A2318', stroke: '#1B5E40',
+    accentDot: '#10B981',
+    detail: {
+      role: 'Text-to-speech — acoustic synthesis to PCM stream',
+      files: ['src/core/tts.py', 'models/tts/kokoro-v0_19.onnx', 'models/tts/voices.bin'],
+      tech: ['kokoro-onnx (offline)', 'edge-tts (cloud)', 'ffmpeg (MP3→PCM)', 'ONNX Runtime'],
+      props: [
+        { k: 'Engines', v: 'kokoro (ONNX, offline) | edge (cloud)' },
+        { k: 'Output', v: 'PCM s16le @ 24kHz mono' },
+        { k: 'Chunk size', v: '2048 bytes' },
+        { k: 'Kokoro voice', v: 'af_sarah (default)' },
+        { k: 'Edge voice', v: 'en-US-JennyNeural' },
+        { k: 'Speed', v: '1.0× (0.5–2.0 range)' },
+        { k: 'Sub-clause split', v: '≥25 chars split at punctuation' },
+        { k: 'Async', v: 'asyncio.to_thread() for Kokoro' },
+      ],
+      desc: 'Factory selects engine from TTS_ENGINE env var. EdgeTTS pipes MP3 stream through ffmpeg subprocess to decode to PCM in real-time. Kokoro splits text into sub-clauses for progressive streaming. Both yield binary 2048-byte chunks directly over WebSocket.',
+    }
+  },
+  {
+    id: 'gemini_api',
+    label: 'Google AI Studio',
+    sub: 'External · HTTPS',
+    icon: '☁️',
+    x: 700, y: 360, w: 134, h: 60,
+    fill: '#1A1428', stroke: '#4A2570',
+    accentDot: '#818CF8',
+    detail: {
+      role: 'Upstream LLM inference API',
+      files: [],
+      tech: ['Google GenAI API', 'gemini-3.6-flash'],
+      props: [
+        { k: 'Auth', v: 'GEMINI_API_KEY (SecretStr)' },
+        { k: 'Protocol', v: 'HTTPS streaming (SSE)' },
+        { k: 'Rate limit', v: '429 → exponential retry' },
+      ],
+      desc: 'External Google AI Studio endpoint. Only external network dependency for the primary pipeline. Requests include system instruction with live context, conversation history, and generation config.',
+    }
+  },
+  {
+    id: 'edge_api',
+    label: 'MS Edge TTS',
+    sub: 'External · WebSocket',
+    icon: '☁️',
+    x: 908, y: 360, w: 134, h: 60,
+    fill: '#1A1428', stroke: '#4A2570',
+    accentDot: '#818CF8',
+    detail: {
+      role: 'Cloud neural TTS (free-tier / zero CPU)',
+      files: [],
+      tech: ['edge-tts library', 'Microsoft Edge Neural Service'],
+      props: [
+        { k: 'Auth', v: 'None (free, anonymous)' },
+        { k: 'TTFT', v: '100-200ms typical' },
+        { k: 'Decode', v: 'MP3 → PCM via ffmpeg' },
+        { k: 'Voice', v: 'en-US-JennyNeural (default)' },
+      ],
+      desc: 'Used when TTS_ENGINE=edge (optional low-CPU streaming engine). Streams MP3 chunks over WebSocket to ffmpeg for real-time decoding to PCM. Fallback: synthetic 440Hz tone if connection fails.',
+    }
+  },
+  {
+    id: 'models',
+    label: 'Local ONNX Models',
+    sub: './models/ volume',
+    icon: '📦',
+    x: 476, y: 360, w: 148, h: 72,
+    fill: '#131A14', stroke: '#1E3A1E',
+    accentDot: '#10B981',
+    detail: {
+      role: 'Local neural model weights — mounted volume',
+      files: ['models/vad/silero_vad.onnx', 'models/tts/kokoro-v0_19.onnx', 'models/tts/voices.bin'],
+      tech: ['ONNX Runtime', 'Kokoro-82M', 'Silero-VAD'],
+      props: [
+        { k: 'VAD model', v: 'silero_vad.onnx' },
+        { k: 'TTS model', v: 'kokoro-v0_19.onnx (82M params)' },
+        { k: 'TTS voices', v: 'voices.bin (embedding file)' },
+        { k: 'STT model', v: 'base.en via faster-whisper' },
+        { k: 'Download', v: 'scripts/download_models.py (on start)' },
+        { k: 'Volume', v: 'Docker: mount at /app/models' },
+      ],
+      desc: 'Models are not baked into the Docker image. download_models.py runs idempotently on container startup, skipping files that already exist. Mount /app/models as a volume for persistence across restarts.',
+    }
+  },
+  {
+    id: 'obs',
+    label: 'Observability',
+    sub: 'Prometheus + JSON logs',
+    icon: '📊',
+    x: 268, y: 360, w: 148, h: 72,
+    fill: '#1F1A08', stroke: '#5A4210',
+    accentDot: '#F59E0B',
+    detail: {
+      role: 'Metrics scrape endpoint + structured log emission',
+      files: ['src/api/metrics.py', 'src/api/telemetry.py', 'src/api/json_logging.py'],
+      tech: ['prometheus-fastapi-instrumentator', 'prometheus_client', 'psutil'],
+      endpoints: ['/metrics  (Prometheus scrape)'],
+      props: [
+        { k: 'Turn metrics', v: 'turns_total, turn_rtt_seconds' },
+        { k: 'Pipeline', v: 'stt_seconds, llm_ttft_seconds, tts_first_chunk_seconds' },
+        { k: 'WS metrics', v: 'ws_connections_active, ws_connections_total' },
+        { k: 'Log format', v: 'RFC 8259 JSON, single-line, stdout' },
+        { k: 'Log fields', v: 'timestamp, level, logger, session_id, turn_id, metrics' },
+        { k: 'Host metrics', v: 'CPU %, RSS MB via psutil' },
+      ],
+      desc: 'Every completed turn emits a structured JSON event to stdout with full pipeline latency breakdown. Prometheus histograms track p50/p95/p99 RTT. The /ready endpoint surfaces model load state and live host metrics for container health checks.',
+    }
+  },
+  {
+    id: 'config',
+    label: 'Settings',
+    sub: 'Pydantic v2 / .env',
+    icon: '⚙️',
+    x: 60, y: 360, w: 148, h: 72,
+    fill: '#0E1521', stroke: '#1E3A5A',
+    accentDot: '#38BDF8',
+    detail: {
+      role: 'Runtime configuration — environment-driven',
+      files: ['src/config.py', '.env', '.env.example'],
+      tech: ['pydantic-settings', 'pydantic v2', 'lru_cache'],
+      props: [
+        { k: 'Key', v: 'GEMINI_API_KEY (required)' },
+        { k: 'TTS engine', v: 'TTS_ENGINE=edge|kokoro' },
+        { k: 'WS origins', v: 'WS_ALLOWED_ORIGINS (JSON list or CSV)' },
+        { k: 'WS auth', v: 'WS_BEARER_TOKEN (optional)' },
+        { k: 'LLM model', v: 'GEMINI_MODEL' },
+        { k: 'Log level', v: 'LOG_LEVEL' },
+        { k: 'Port', v: 'PORT (env-driven, default 8000)' },
+      ],
+      desc: 'Single Settings class (Pydantic BaseSettings). Loaded once via get_settings() + lru_cache. WS_ALLOWED_ORIGINS parses as JSON array or comma-separated string. All secrets use SecretStr. CPU threads default to min(4, cpu_count).',
+    }
+  },
+];
+
+// Pipeline flow steps
+const FLOW_STEPS = [
+  { id: 0, label: '1 · Mic capture → PCM frames', nodes: ['browser'], edges: [] },
+  { id: 1, label: '2 · PCM frames over WebSocket', nodes: ['browser', 'gateway'], edges: ['browser-gateway'] },
+  { id: 2, label: '3 · VAD: utterance detection', nodes: ['gateway', 'vad'], edges: ['gateway-vad'] },
+  { id: 3, label: '4 · STT: speech → transcript', nodes: ['vad', 'stt'], edges: ['vad-stt'] },
+  { id: 4, label: '5 · LLM: transcript → tokens', nodes: ['stt', 'llm', 'gemini_api'], edges: ['stt-llm', 'llm-gemini_api'] },
+  { id: 5, label: '6 · TTS: clauses → PCM chunks', nodes: ['llm', 'tts', 'edge_api'], edges: ['llm-tts', 'tts-edge_api'] },
+  { id: 6, label: '7 · Audio stream → browser', nodes: ['tts', 'gateway', 'browser'], edges: ['tts-gateway', 'gateway-browser-return'] },
+];
+
+// Edges definition
+const EDGES = [
+  // Primary pipeline (flow path)
+  { id: 'browser-gateway', from: 'browser', to: 'gateway', type: 'primary', label: 'PCM frames (binary WS)' },
+  { id: 'gateway-vad', from: 'gateway', to: 'vad', type: 'primary', label: 'asyncio.Queue[bytes]' },
+  { id: 'vad-stt', from: 'vad', to: 'stt', type: 'primary', label: 'float32 audio buffer' },
+  { id: 'stt-llm', from: 'stt', to: 'llm', type: 'primary', label: 'transcript string' },
+  { id: 'llm-tts', from: 'llm', to: 'tts', type: 'primary', label: 'sentence clauses' },
+  { id: 'tts-gateway', from: 'tts', to: 'gateway', type: 'primary', label: 'PCM chunks (bytes)' },
+  { id: 'gateway-browser-return', from: 'gateway', to: 'browser', type: 'primary', label: 'binary WS + JSON events' },
+  // External calls
+  { id: 'llm-gemini_api', from: 'llm', to: 'gemini_api', type: 'secondary', label: 'HTTPS streaming' },
+  { id: 'tts-edge_api', from: 'tts', to: 'edge_api', type: 'secondary', label: 'WS (MP3 stream)' },
+  // Config/models
+  { id: 'config-gateway', from: 'config', to: 'gateway', type: 'dashed', label: 'Settings singleton' },
+  { id: 'models-vad', from: 'models', to: 'vad', type: 'dashed', label: '.onnx load' },
+  { id: 'models-stt', from: 'models', to: 'stt', type: 'dashed', label: 'model files' },
+  { id: 'models-tts', from: 'models', to: 'tts', type: 'dashed', label: '.onnx + voices.bin' },
+  { id: 'obs-gateway', from: 'obs', to: 'gateway', type: 'dashed', label: 'metrics / logs' },
+];
+
+// ═══════════════════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════════════════
+
+const SVG_W = 1120, SVG_H = 520;
+const svg = document.getElementById('diagram');
+svg.setAttribute('width', SVG_W);
+svg.setAttribute('height', SVG_H);
+svg.setAttribute('viewBox', `0 0 ${SVG_W} ${SVG_H}`);
+
+// Defs
+const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+
+// Arrowheads
+function makeArrow(id, color) {
+  const m = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+  m.setAttribute('id', id);
+  m.setAttribute('markerWidth', '8');
+  m.setAttribute('markerHeight', '8');
+  m.setAttribute('refX', '6');
+  m.setAttribute('refY', '3');
+  m.setAttribute('orient', 'auto');
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  p.setAttribute('d', 'M0,0 L0,6 L8,3 z');
+  p.setAttribute('fill', color);
+  m.appendChild(p);
+  return m;
+}
+defs.appendChild(makeArrow('arrow-primary', '#10B981'));
+defs.appendChild(makeArrow('arrow-secondary', '#475569'));
+defs.appendChild(makeArrow('arrow-dashed', '#475569'));
+
+// Glow filter
+const filt = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+filt.setAttribute('id', 'glow');
+filt.setAttribute('x', '-20%'); filt.setAttribute('y', '-20%');
+filt.setAttribute('width', '140%'); filt.setAttribute('height', '140%');
+const blur = document.createElementNS('http://www.w3.org/2000/svg', 'feGaussianBlur');
+blur.setAttribute('stdDeviation', '3');
+blur.setAttribute('result', 'blur');
+const comp = document.createElementNS('http://www.w3.org/2000/svg', 'feComposite');
+comp.setAttribute('in', 'SourceGraphic'); comp.setAttribute('in2', 'blur');
+comp.setAttribute('operator', 'over');
+filt.appendChild(blur); filt.appendChild(comp);
+defs.appendChild(filt);
+svg.appendChild(defs);
+
+// Lookup map
+const nodeMap = {};
+NODES.forEach(n => { nodeMap[n.id] = n; });
+
+// ── Helper: SVG element ──────────────────────────────────
+function el(tag, attrs, parent) {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function txt(content, attrs, parent) {
+  const t = el('text', attrs, parent);
+  t.textContent = content;
+  return t;
+}
+
+// ── Clusters ─────────────────────────────────────────────
+const clusters = [
+  { x: 450, y: 70, w: 210, h: 280, color: '#10B981', label: 'LOCAL INFERENCE' },
+  { x: 670, y: 70, w: 400, h: 180, color: '#818CF8', label: 'LLM PIPELINE' },
+  { x: 670, y: 330, w: 400, h: 110, color: '#4A2570', label: 'EXTERNAL SERVICES' },
+  { x: 40, y: 330, w: 600, h: 120, color: '#5A4210', label: 'PLATFORM / CONFIG / OPS' },
+];
+
+clusters.forEach(c => {
+  const g = el('g', {}, svg);
+  el('rect', {
+    x: c.x, y: c.y, width: c.w, height: c.h,
+    rx: 12, ry: 12,
+    fill: 'none',
+    stroke: c.color,
+    'stroke-opacity': '0.2',
+    'stroke-dasharray': '5 4',
+    'stroke-width': '1',
+  }, g);
+  txt(c.label, {
+    x: c.x + 10, y: c.y + 14,
+    'font-family': "'JetBrains Mono', monospace",
+    'font-size': '8.5',
+    'letter-spacing': '0.12em',
+    fill: c.color,
+    'fill-opacity': '0.45',
+  }, g);
+});
+
+// ── Edges ─────────────────────────────────────────────────
+const edgeLayer = el('g', { id: 'edge-layer' }, svg);
+
+function midpoint(n) {
+  return { x: n.x + n.w / 2, y: n.y + n.h / 2 };
+}
+
+// Compute a curved path between two nodes
+function edgePath(fromNode, toNode) {
+  const fx = fromNode.x + fromNode.w;
+  const fy = fromNode.y + fromNode.h / 2;
+  const tx = toNode.x;
+  const ty = toNode.y + toNode.h / 2;
+
+  // Special cases for vertical connections
+  const dx = tx - fx;
+  const dy = ty - fy;
+
+  if (Math.abs(dy) > Math.abs(dx) * 0.8) {
+    // More vertical: route differently
+    const fx2 = fromNode.x + fromNode.w / 2;
+    const fy2 = (dy > 0) ? fromNode.y + fromNode.h : fromNode.y;
+    const tx2 = toNode.x + toNode.w / 2;
+    const ty2 = (dy > 0) ? toNode.y : toNode.y + toNode.h;
+    const cp = (fy2 + ty2) / 2;
+    return `M${fx2},${fy2} C${fx2},${cp} ${tx2},${cp} ${tx2},${ty2}`;
+  }
+
+  // Mostly horizontal
+  const cp1x = fx + dx * 0.4;
+  const cp2x = tx - dx * 0.4;
+  return `M${fx},${fy} C${cp1x},${fy} ${cp2x},${ty} ${tx},${ty}`;
+}
+
+// Special: return path from TTS/gateway back to browser (arc above)
+function returnPath(fromNode, toNode) {
+  const fx = fromNode.x + fromNode.w / 2;
+  const fy = fromNode.y;
+  const tx = toNode.x + toNode.w / 2;
+  const ty = toNode.y;
+  return `M${fx},${fy} C${fx},${fy - 60} ${tx},${ty - 60} ${tx},${ty}`;
+}
+
+const edgeEls = {};
+EDGES.forEach(edge => {
+  const fromNode = nodeMap[edge.from];
+  const toNode = nodeMap[edge.to];
+  if (!fromNode || !toNode) return;
+
+  let d;
+  if (edge.id === 'gateway-browser-return') {
+    d = returnPath(nodeMap['gateway'], nodeMap['browser']);
+  } else {
+    d = edgePath(fromNode, toNode);
+  }
+
+  const g = el('g', { 'data-edge': edge.id }, edgeLayer);
+
+  let strokeColor = '#334155';
+  let strokeWidth = '1.2';
+  let dashArray = null;
+  let markerEnd = 'url(#arrow-secondary)';
+
+  if (edge.type === 'primary') {
+    strokeColor = '#10B981';
+    strokeWidth = '1.8';
+    markerEnd = 'url(#arrow-primary)';
+  } else if (edge.type === 'dashed') {
+    strokeColor = '#334155';
+    strokeWidth = '1';
+    dashArray = '4 3';
+    markerEnd = 'url(#arrow-dashed)';
+  }
+
+  const pathAttrs = {
+    d,
+    stroke: strokeColor,
+    'stroke-width': strokeWidth,
+    fill: 'none',
+    'stroke-linecap': 'round',
+    'marker-end': markerEnd,
+  };
+  if (dashArray) pathAttrs['stroke-dasharray'] = dashArray;
+
+  const path = el('path', pathAttrs, g);
+  edgeEls[edge.id] = { g, path, edge };
+});
+
+// ── Nodes ─────────────────────────────────────────────────
+const nodeLayer = el('g', { id: 'node-layer' }, svg);
+const nodeEls = {};
+
+NODES.forEach(node => {
+  const g = el('g', {
+    'class': 'node-group',
+    'data-node': node.id,
+    transform: `translate(${node.x},${node.y})`,
+  }, nodeLayer);
+
+  // Glow halo
+  el('rect', {
+    x: -4, y: -4, width: node.w + 8, height: node.h + 8,
+    rx: 12, fill: node.stroke, opacity: '0.0',
+    'class': 'node-glow',
+    filter: 'url(#glow)',
+  }, g);
+
+  // Body
+  el('rect', {
+    x: 0, y: 0, width: node.w, height: node.h,
+    rx: 8,
+    fill: node.fill,
+    'class': 'node-rect',
+  }, g);
+
+  // Border
+  el('rect', {
+    x: 0.5, y: 0.5, width: node.w - 1, height: node.h - 1,
+    rx: 7.5,
+    fill: 'none',
+    stroke: node.stroke,
+    'stroke-width': '1.2',
+    'class': 'node-border',
+  }, g);
+
+  // Accent bar (left)
+  el('rect', {
+    x: 0, y: 14, width: 3, height: node.h - 28,
+    rx: 1.5,
+    fill: node.accentDot,
+    opacity: '0.7',
+  }, g);
+
+  // Icon
+  txt(node.icon, {
+    x: 18, y: 28,
+    'font-size': '14',
+    'dominant-baseline': 'middle',
+    'text-anchor': 'middle',
+  }, g);
+
+  // Label
+  txt(node.label, {
+    x: 30, y: 26,
+    'class': 'node-label',
+    'dominant-baseline': 'middle',
+  }, g);
+
+  // Sub-label
+  txt(node.sub, {
+    x: 30, y: 46,
+    'class': 'node-sublabel',
+    'dominant-baseline': 'middle',
+  }, g);
+
+  nodeEls[node.id] = g;
+
+  // Click handler
+  g.addEventListener('click', () => openPanel(node));
+  g.addEventListener('mouseenter', (e) => showTooltip(e, node.detail.role));
+  g.addEventListener('mouseleave', hideTooltip);
+});
+
+// ═══════════════════════════════════════════════════════════
+//  PAN & ZOOM
+// ═══════════════════════════════════════════════════════════
+
+const canvasWrap = document.getElementById('canvas-wrap');
+const canvas = document.getElementById('canvas');
+let scale = 1, tx = 0, ty = 0;
+let dragging = false, lastX = 0, lastY = 0;
+
+function applyTransform() {
+  canvas.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`;
+}
+
+function fitView() {
+  const cw = canvasWrap.clientWidth;
+  const ch = canvasWrap.clientHeight;
+  const margin = 32;
+  const scaleX = (cw - margin * 2) / SVG_W;
+  const scaleY = (ch - margin * 2) / SVG_H;
+  scale = Math.min(scaleX, scaleY, 1.2);
+  tx = (cw - SVG_W * scale) / 2;
+  ty = (ch - SVG_H * scale) / 2;
+  applyTransform();
+}
+
+canvasWrap.addEventListener('mousedown', e => {
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+  canvasWrap.classList.add('panning');
+});
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  tx += e.clientX - lastX;
+  ty += e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  applyTransform();
+});
+window.addEventListener('mouseup', () => {
+  dragging = false;
+  canvasWrap.classList.remove('panning');
+});
+
+canvasWrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = canvasWrap.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const delta = e.deltaY < 0 ? 1.1 : 0.9;
+  const newScale = Math.max(0.3, Math.min(2.5, scale * delta));
+  tx = mx - (mx - tx) * (newScale / scale);
+  ty = my - (my - ty) * (newScale / scale);
+  scale = newScale;
+  applyTransform();
+}, { passive: false });
+
+// Touch
+let lastTouchDist = 0;
+canvasWrap.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    dragging = true;
+    lastX = e.touches[0].clientX;
+    lastY = e.touches[0].clientY;
+  } else if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    lastTouchDist = Math.hypot(dx, dy);
+  }
+}, { passive: true });
+canvasWrap.addEventListener('touchmove', e => {
+  if (e.touches.length === 1 && dragging) {
+    tx += e.touches[0].clientX - lastX;
+    ty += e.touches[0].clientY - lastY;
+    lastX = e.touches[0].clientX;
+    lastY = e.touches[0].clientY;
+    applyTransform();
+  } else if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.hypot(dx, dy);
+    const delta = dist / lastTouchDist;
+    scale = Math.max(0.3, Math.min(2.5, scale * delta));
+    lastTouchDist = dist;
+    applyTransform();
+  }
+}, { passive: true });
+canvasWrap.addEventListener('touchend', () => { dragging = false; });
+
+document.getElementById('zoom-in').addEventListener('click', () => {
+  scale = Math.min(2.5, scale * 1.2); applyTransform();
+});
+document.getElementById('zoom-out').addEventListener('click', () => {
+  scale = Math.max(0.3, scale / 1.2); applyTransform();
+});
+document.getElementById('zoom-fit').addEventListener('click', fitView);
+
+// ═══════════════════════════════════════════════════════════
+//  PANEL
+// ═══════════════════════════════════════════════════════════
+
+const panel = document.getElementById('panel');
+const panelIcon = document.getElementById('panel-icon');
+const panelTitle = document.getElementById('panel-title');
+const panelSub = document.getElementById('panel-subtitle');
+const panelBody = document.getElementById('panel-body');
+
+function openPanel(node) {
+  const d = node.detail;
+  panelIcon.textContent = node.icon;
+  panelIcon.style.background = node.fill;
+  panelIcon.style.border = `1px solid ${node.stroke}`;
+  panelTitle.textContent = node.label;
+  panelSub.textContent = d.role;
+
+  panelBody.innerHTML = '';
+
+  // Description
+  const descSec = section();
+  lbl('Overview', descSec);
+  const p = document.createElement('p');
+  p.className = 'p-prose';
+  p.textContent = d.desc;
+  descSec.appendChild(p);
+  panelBody.appendChild(descSec);
+
+  // Files
+  if (d.files && d.files.length) {
+    const sec = section();
+    lbl('Source Files', sec);
+    d.files.forEach(f => {
+      const div = document.createElement('div');
+      div.className = 'p-path';
+      div.textContent = f;
+      sec.appendChild(div);
+    });
+    panelBody.appendChild(sec);
+  }
+
+  // Tech
+  if (d.tech && d.tech.length) {
+    const sec = section();
+    lbl('Technologies', sec);
+    const chips = document.createElement('div');
+    chips.className = 'p-chips';
+    d.tech.forEach(t => {
+      const c = document.createElement('span');
+      c.className = 'p-chip';
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      c.appendChild(dot);
+      c.append(t);
+      chips.appendChild(c);
+    });
+    sec.appendChild(chips);
+    panelBody.appendChild(sec);
+  }
+
+  // Endpoints
+  if (d.endpoints && d.endpoints.length) {
+    const sec = section();
+    lbl('Endpoints', sec);
+    d.endpoints.forEach(ep => {
+      const c = document.createElement('span');
+      c.className = 'p-chip';
+      c.style.fontFamily = "'JetBrains Mono', monospace";
+      c.style.fontSize = '10px';
+      c.textContent = ep;
+      sec.appendChild(c);
+    });
+    panelBody.appendChild(sec);
+  }
+
+  // Props
+  if (d.props && d.props.length) {
+    const sec = section();
+    lbl('Config & Parameters', sec);
+    const kv = document.createElement('div');
+    kv.className = 'p-kv';
+    d.props.forEach(row => {
+      const r = document.createElement('div');
+      r.className = 'p-row';
+      const k = document.createElement('span');
+      k.className = 'k';
+      k.textContent = row.k;
+      const v = document.createElement('span');
+      v.className = 'v';
+      v.textContent = row.v;
+      r.appendChild(k);
+      r.appendChild(v);
+      kv.appendChild(r);
+    });
+    sec.appendChild(kv);
+    panelBody.appendChild(sec);
+  }
+
+  panel.classList.add('open');
+}
+
+function section() {
+  const s = document.createElement('div');
+  s.className = 'p-section';
+  return s;
+}
+function lbl(text, parent) {
+  const l = document.createElement('div');
+  l.className = 'p-label';
+  l.textContent = text;
+  parent.appendChild(l);
+}
+
+document.getElementById('panel-close').addEventListener('click', () => {
+  panel.classList.remove('open');
+  clearHighlights();
+});
+
+// ═══════════════════════════════════════════════════════════
+//  TOOLTIP
+// ═══════════════════════════════════════════════════════════
+
+const tooltip = document.getElementById('tooltip');
+function showTooltip(e, text) {
+  tooltip.textContent = text;
+  tooltip.classList.add('show');
+  posTooltip(e);
+}
+function posTooltip(e) {
+  const rect = canvasWrap.getBoundingClientRect();
+  let x = e.clientX - rect.left + 12;
+  let y = e.clientY - rect.top - 10;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+function hideTooltip() { tooltip.classList.remove('show'); }
+
+// ═══════════════════════════════════════════════════════════
+//  FLOW PLAYBACK
+// ═══════════════════════════════════════════════════════════
+
+const stepLabel = document.getElementById('step-label');
+const stepTrack = document.getElementById('step-track');
+let activeStep = -1;
+let playInterval = null;
+
+// Build step dots
+FLOW_STEPS.forEach((step, i) => {
+  const dot = document.createElement('div');
+  dot.className = 'step-dot';
+  dot.title = step.label;
+  dot.addEventListener('click', () => goToStep(i));
+  stepTrack.appendChild(dot);
+});
+
+// Play/pause button
+const playBtn = document.createElement('button');
+playBtn.className = 'step-btn';
+playBtn.textContent = '▶ Play';
+playBtn.addEventListener('click', () => {
+  if (playInterval) {
+    stopPlay();
+  } else {
+    startPlay();
+  }
+});
+
+// Prev/next
+const prevBtn = document.createElement('button');
+prevBtn.className = 'step-btn';
+prevBtn.textContent = '← Prev';
+prevBtn.addEventListener('click', () => {
+  stopPlay();
+  goToStep(Math.max(0, activeStep - 1));
+});
+
+const nextBtn = document.createElement('button');
+nextBtn.className = 'step-btn';
+nextBtn.textContent = 'Next →';
+nextBtn.addEventListener('click', () => {
+  stopPlay();
+  goToStep(Math.min(FLOW_STEPS.length - 1, activeStep + 1));
+});
+
+// Reset button
+const resetBtn = document.createElement('button');
+resetBtn.className = 'step-btn';
+resetBtn.textContent = '↺ Reset';
+resetBtn.addEventListener('click', () => {
+  stopPlay();
+  clearHighlights();
+  activeStep = -1;
+  updateDots();
+  stepLabel.classList.remove('show');
+});
+
+const bottombar = document.getElementById('bottombar');
+// Insert buttons after the bb-label + sep-v + track
+bottombar.insertBefore(resetBtn, bottombar.children[3]);
+bottombar.insertBefore(prevBtn, bottombar.children[3]);
+bottombar.insertBefore(nextBtn, bottombar.children[3]);
+bottombar.insertBefore(playBtn, bottombar.children[3]);
+
+// Insert another separator
+const sepAfterBtns = document.createElement('div');
+sepAfterBtns.className = 'sep-v';
+bottombar.insertBefore(sepAfterBtns, bottombar.children[7]);
+
+function clearHighlights() {
+  Object.values(nodeEls).forEach(g => g.classList.remove('node-highlight'));
+  Object.values(edgeEls).forEach(({ path, edge }) => {
+    if (edge.type === 'primary') {
+      path.removeAttribute('stroke-dasharray');
+      path.classList.remove('edge-animated');
+    }
+  });
+}
+
+function goToStep(idx) {
+  clearHighlights();
+  activeStep = idx;
+  const step = FLOW_STEPS[idx];
+
+  // Highlight nodes
+  step.nodes.forEach(nid => {
+    if (nodeEls[nid]) nodeEls[nid].classList.add('node-highlight');
+  });
+
+  // Animate edges
+  step.edges.forEach(eid => {
+    if (edgeEls[eid]) {
+      const { path } = edgeEls[eid];
+      path.setAttribute('stroke-dasharray', '8 5');
+      path.classList.add('edge-animated');
+    }
+  });
+
+  // Label
+  stepLabel.textContent = step.label;
+  stepLabel.classList.add('show');
+
+  updateDots();
+}
+
+function updateDots() {
+  const dots = stepTrack.querySelectorAll('.step-dot');
+  dots.forEach((dot, i) => {
+    dot.classList.remove('active', 'done');
+    if (i === activeStep) dot.classList.add('active');
+    else if (i < activeStep) dot.classList.add('done');
+  });
+}
+
+function startPlay() {
+  if (activeStep < 0) activeStep = -1;
+  playBtn.textContent = '⏸ Pause';
+  playBtn.classList.add('active');
+  playInterval = setInterval(() => {
+    const next = activeStep + 1;
+    if (next >= FLOW_STEPS.length) {
+      stopPlay();
+      return;
+    }
+    goToStep(next);
+  }, 1400);
+  goToStep(activeStep + 1 < FLOW_STEPS.length ? activeStep + 1 : 0);
+}
+
+function stopPlay() {
+  clearInterval(playInterval);
+  playInterval = null;
+  playBtn.textContent = '▶ Play';
+  playBtn.classList.remove('active');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════
+
+window.addEventListener('resize', fitView);
+setTimeout(fitView, 60);
+</script>

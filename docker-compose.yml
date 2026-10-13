@@ -1,21 +1,113 @@
+# EchoSync — production stack for Oracle Cloud Always Free ARM64 (Ampere A1) + Caddy.
+#
+# Topology (only Caddy touches the host network; the app is never published):
+#
+#   Internet ──► OCI VCN Security List / NSG (80/443)
+#                     │
+#                     ▼
+#              caddy (host ports 80, 443/tcp+udp — automatic Let's Encrypt TLS)
+#                     │  Docker bridge network `backend`
+#                     ▼
+#              app (internal only, app:8000 — WebSocket /ws/audio gateway)
+#
+# Usage (the --env-file flag supplies ${DOMAIN} for Caddyfile interpolation):
+#   docker compose --env-file .env.production up -d --build
+
 services:
-  echosync:
+  app:
     build:
       context: .
+      dockerfile: Dockerfile
     image: echosync:latest
-    container_name: echosync
+    container_name: echosync-app
     env_file:
-      - .env
-    ports:
-      - "8000:8000"
+      - .env.production
+    # No host ports: the app is reachable ONLY via caddy over the `backend`
+    # bridge network (caddy proxies to app:8000). Uncomment only for emergency
+    # host-level debugging — and never while a public security-list rule points
+    # at port 8000.
+    # ports:
+    #   - "127.0.0.1:8000:8000"
+    volumes:
+      # Neural weights (Silero VAD, faster-whisper, Kokoro) persist across
+      # container recreation; the startup script re-verifies them idempotently.
+      - models:/app/models
+    networks:
+      - backend
     restart: unless-stopped
     healthcheck:
       test:
         - CMD
         - python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"
-      interval: 15s
-      timeout: 3s
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      # First boot downloads model weights (~350 MB total) and pre-warms the
+      # STT/TTS/VAD models — slow on ARM; do not shorten or the orchestrator
+      # will kill the container mid-download.
+      start_period: 300s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Optional guard-rails on a flex shape (uncomment and tune to your OCPU/RAM):
+    # mem_limit: 20g
+    # cpus: 4
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: echosync-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"          # HTTP + ACME HTTP-01 challenges + redirects
+      - "443:443"        # HTTPS
+      - "443:443/udp"    # HTTP/3 (QUIC)
+    environment:
+      # Injected by compose interpolation from --env-file .env.production.
+      # A bare hostname/IP gets automatic Let's Encrypt TLS; localhost/self-signed
+      # is used as fallback when no public DNS record exists.
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # persisted certificates + account keys
+      - caddy_config:/config
+    networks:
+      - backend
+    # service_started (not service_healthy): Caddy must boot even while the app
+    # is still downloading models on first run, so it can serve 502/503 instead
+    # of leaving the host fully unreachable.
+    depends_on:
+      - app
+    healthcheck:
+      # caddy:2-alpine ships busybox wget; the admin API on :2019 is the
+      # canonical liveness signal.
+      test:
+        - CMD
+        - wget
+        - "-q"
+        - "--spider"
+        - "http://127.0.0.1:2019/metrics"
+      interval: 30s
+      timeout: 5s
       retries: 3
-      start_period: 30s
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  backend:
+    driver: bridge
+    # Isolated dedicated bridge: only `app` and `caddy` are attached. The app
+    # publishes no ports, so nothing on the host or LAN can reach :8000 —
+    # traffic must flow through the TLS-terminating proxy.
+
+volumes:
+  models:
+  caddy_data:
+  caddy_config:

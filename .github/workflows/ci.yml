@@ -50,6 +50,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # QEMU user-space emulation is required to BUILD the linux/arm64 variant
+      # on the amd64 GitHub runner. The app image never runs under emulation:
+      # GHCR serves the arm64 variant natively to the Oracle Ampere A1 VM, and
+      # local dev pulls the amd64 variant.
+      - uses: docker/setup-qemu-action@v3
+
       - uses: docker/setup-buildx-action@v3
         with:
           driver: docker-container
@@ -72,34 +78,15 @@ jobs:
             type=ref,event=branch
 
       - name: Build and push
+        # Multi-arch manifest: amd64 for local dev + arm64/aarch64 for the
+        # Oracle Cloud Ampere A1 deployment (docker compose pulls the arm64
+        # variant natively — no emulation on the VM).
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  deploy:
-    name: Deploy to Railway
-    needs: docker
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Deploy GHCR image to Railway
-        # Image is already built and pushed to GHCR by the `docker` job.
-        # railway redeploy targets the linked service and pulls the newly pushed image.
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_SERVICE_NAME: ${{ secrets.RAILWAY_SERVICE_NAME }}
-        run: |
-          if [ -z "$RAILWAY_TOKEN" ]; then
-            echo "RAILWAY_TOKEN secret not configured; skipping deploy step."
-            exit 0
-          fi
-          curl -fsSL https://raw.githubusercontent.com/railwayapp/cli/master/install.sh | sh
-          ~/.railway/bin/railway login --token "$RAILWAY_TOKEN"
-          ~/.railway/bin/railway redeploy --service "$RAILWAY_SERVICE_NAME" --detach

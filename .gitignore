@@ -11,6 +11,7 @@ wheels/
 
 # Environment and sensitive secrets
 .env
+.env.production
 
 # Cached neural weights
 models/

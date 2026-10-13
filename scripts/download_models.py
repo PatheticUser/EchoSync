@@ -19,7 +19,29 @@ import sys
 import urllib.request
 from pathlib import Path
 
-MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
+HEADERS = {"User-Agent": "Mozilla/5.0 (EchoSync model fetcher)"}
+
+
+def _env_path(name: str, default: Path) -> Path:
+    """Resolve a path setting from the environment (config-first) with a fallback.
+
+    Honors MODEL_CACHE_DIR / WHISPER_MODEL_DIR so production deployments drive
+    the downloader purely from injected env vars (e.g. the /app/models Docker
+    volume) instead of a hardcoded relative layout. Relative values resolve
+    against the current working directory (the repo root under run.sh / Docker
+    WORKDIR).
+    """
+    raw = os.environ.get(name)
+    if raw and raw.strip():
+        return Path(raw.strip()).expanduser().resolve()
+    return default
+
+
+# Model cache layout mirrors src/config.py: the env vars win when injected
+# (container: /app/models, a Docker volume); the script-relative fallback
+# preserves the local-dev ./models layout.
+MODELS_DIR = _env_path("MODEL_CACHE_DIR", Path(__file__).resolve().parent.parent / "models")
+WHISPER_DIR = _env_path("WHISPER_MODEL_DIR", MODELS_DIR / "stt")
 
 # (url, destination Path, minimum acceptable bytes)
 VAD_MODEL = (
@@ -41,8 +63,6 @@ VOICES_BIN = (
 )
 
 MODEL_TARGETS = [VAD_MODEL, KOKORO_MODEL, VOICES_BIN]
-
-HEADERS = {"User-Agent": "Mozilla/5.0 (EchoSync model fetcher)"}
 
 
 def download(url: str, dest: Path, min_bytes: int) -> None:
@@ -89,14 +109,14 @@ def _whisper_model_name() -> str:
 
 
 def warm_whisper() -> None:
-    """Prime the CTranslate2 faster-whisper model cache under models/stt."""
+    """Prime the CTranslate2 faster-whisper model cache under WHISPER_DIR."""
     # Respect the model configured in .env (WHISPER_MODEL_NAME) so the cache
     # always mirrors what the runtime loads. Falls back to base.en.
     model_name = _whisper_model_name()
     cache_name = f"models--Systran--faster-whisper-{model_name}"
-    cache_file = MODELS_DIR / "stt" / "CACHEDIR.TAG"
-    if (MODELS_DIR / "stt" / cache_name).is_dir():
-        print(f"[skip] faster-whisper {model_name} already cached under models/stt")
+    cache_file = WHISPER_DIR / "CACHEDIR.TAG"
+    if (WHISPER_DIR / cache_name).is_dir():
+        print(f"[skip] faster-whisper {model_name} already cached under {WHISPER_DIR}")
         return
 
     print(f"[get ] faster-whisper {model_name} (HuggingFace cache)")
@@ -106,7 +126,7 @@ def warm_whisper() -> None:
         model_size_or_path=model_name,
         device="cpu",
         compute_type="int8",
-        download_root=str(MODELS_DIR / "stt"),
+        download_root=str(WHISPER_DIR),
     )
     cache_file.parent.mkdir(parents=True, exist_ok=True)
     cache_file.write_text("Signature: 8a477f597d28d172789f06886806bc550635d4d2\n")
